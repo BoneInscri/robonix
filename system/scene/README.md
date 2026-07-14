@@ -53,17 +53,18 @@ The metric pipeline is ConceptGraphs-style per-frame perception with 4 stages:
 
 Periodic cleanup (every 30 ticks) runs concept-graphs's `denoise_objects` + `filter_objects` + `merge_overlap_objects` so duplicates from edge-case detections eventually collapse.
 
-## Deployment targets (x86 / Jetson)
+## Deployment targets (x86 / Jetson / AMD ROCm)
 
 Unlike the Rust system binaries (atlas / executor / pilot / liaison — one
-static binary, architecture-agnostic), scene ships a heavy Python + CUDA
+static binary, architecture-agnostic), scene ships a heavy Python + GPU
 perception stack, so it is **platform-specific at both build and run time**.
-One repo covers three targets, picked by the per-target package manifest
+One repo covers four targets, picked by the per-target package manifest
 (`rbnx deploy` selects it via the deploy entry's `manifest:` field):
 
 | Target | manifest | torch source | how it runs |
 |---|---|---|---|
 | **x86-docker** (default) | `package_manifest.yaml` | cu128 x86 wheels baked into `docker/Dockerfile` | `docker run --gpus all` |
+| **amd-rocm-docker** | `package_manifest.yaml` | ROCm 6.3 x86 wheels baked into `docker/Dockerfile` | `docker run --device=/dev/kfd --device=/dev/dri --group-add video` |
 | **jetson-docker** | `package_manifest.jetson-docker.yaml` | NVIDIA jetson-ai-lab wheels in `docker/Dockerfile.jetson` | `docker run --runtime nvidia` |
 | **jetson-native** | `package_manifest.jetson-native.yaml` | **host JetPack torch** (no image) | host `python3 -m scene_service.service` |
 

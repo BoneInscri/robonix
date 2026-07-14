@@ -1,0 +1,29 @@
+# Scene MCP server — AMD ROCm + DOCKER deployment target.
+#
+#   build → RBNX_BUILD_TARGET=amd-rocm-docker scripts/build.sh: docker build
+#           with docker/Dockerfile and ROBONIX_GPU_BACKEND=rocm (ROCm 6.3
+#           PyTorch wheels instead of CUDA cu128 x86 wheels).
+#   start → ROBONIX_SCENE_FORCE=docker scripts/start.sh: docker run with
+#           --device=/dev/kfd --device=/dev/dri --group-add video for
+#           AMD GPU passthrough.
+#
+# Use this on an x86_64 host with an AMD Radeon GPU + ROCm 6.x installed.
+# Requires: amdgpu kernel driver, ROCm userspace, user in the `video` group.
+manifestVersion: 1
+
+package:
+  name: com.robonix.system.scene
+  version: 0.1.0
+  vendor: robonix
+  description: Scene — semantic + geometric live map (AMD ROCm + docker target).
+  license: MulanPSL-2.0
+
+build: RBNX_BUILD_TARGET=amd-rocm-docker bash scripts/build.sh
+start: ROBONIX_SCENE_FORCE=docker bash scripts/start.sh
+
+capabilities:
+  - name: robonix/system/scene/list_objects
+  - name: robonix/system/scene/goal_near
+  - name: robonix/system/scene/get_scene_graph
+  - name: robonix/system/scene/get_object_context
+  - name: robonix/system/scene/list_relations

@@ -146,13 +146,17 @@ RUN if [ "${ROBONIX_GPU_BACKEND}" = "rocm" ]; then \
 # RUN conda run -n env1 pip install git+https://github.com/colcon/colcon-cargo.git && \
 #     conda run -n env1 pip install git+https://github.com/colcon/colcon-ros-cargo.git
 
+# CUDA environment — effective only when the cuda backend is used (ROBONIX_GPU_BACKEND=cuda).
+# Under the rocm backend these are no-ops: /usr/local/cuda doesn't exist and
+# NVIDIA_VISIBLE_DEVICES is ignored (no nvidia-container-runtime).
 ENV CUDA_HOME=/usr/local/cuda
 ENV CUDA_PATH=/usr/local/cuda
 ENV PATH=/usr/local/cuda/bin:$PATH
 RUN echo 'export LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/local/cuda/compat:${LD_LIBRARY_PATH:-}' >> ~/.bashrc
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
-# ROCm environment (harmless when using CUDA backend — only effective if /opt/rocm exists)
+# ROCm environment — effective only when the rocm backend is used (ROBONIX_GPU_BACKEND=rocm).
+# Under the cuda backend /opt/rocm doesn't exist and HIP_VISIBLE_DEVICES is ignored.
 ENV ROCM_HOME=/opt/rocm
 ENV PATH=/opt/rocm/bin:${PATH}
 ENV LD_LIBRARY_PATH=/opt/rocm/lib:${LD_LIBRARY_PATH:-}

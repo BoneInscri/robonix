@@ -58,8 +58,9 @@ only if your network needs a different mirror/source.
 | `complete_apartment.wbt`<br>![complete apartment](thumbnails/complete_apartment.jpg) | `break_room.wbt`<br>![break room](thumbnails/break_room.jpg) |
 | `kitchen.wbt`<br>![kitchen](thumbnails/kitchen.jpg) |  |
 
-`start.sh` auto-detects `nvidia-smi` and merges `compose.gpu.yaml` when
-present. Force CPU-only with `ROBONIX_FORCE_CPU=1`. The container's name
+`start.sh` auto-detects `nvidia-smi` (NVIDIA) or `rocm-smi` / `/dev/kfd`
+(AMD) and merges the appropriate GPU compose file when present.
+Force CPU-only with `ROBONIX_FORCE_CPU=1`. The container's name
 is `robonix_tiago_sim` (referenced by every driver package's
 `docker exec`).
 
@@ -75,6 +76,7 @@ is `robonix_tiago_sim` (referenced by every driver package's
   `start.sh`. The sim compose file bind-mounts that file into the
   container as `/root/.Xauthority`.
 - For NVIDIA GPU: `nvidia-container-toolkit` installed on the host.
+- For AMD GPU: ROCm runtime + `amdgpu` kernel driver on the host.
 
 ## Layout
 
@@ -83,6 +85,7 @@ is `robonix_tiago_sim` (referenced by every driver package's
 | `start.sh` | User-facing launcher. `bash start.sh`. |
 | `compose.yaml` | Single `sim` service: Webots + eaios_webots + bind-mounts of `../primitives` and `../services` into the container at `/robonix_pkgs`. |
 | `compose.gpu.yaml` | Optional NVIDIA GPU passthrough (auto-merged by `start.sh`). |
+| `compose.gpu-amd.yaml` | Optional AMD ROCm GPU passthrough (auto-merged by `start.sh`). |
 | `compose.stream.yaml` | Optional browser-streaming mode — headless Xorg + webots `--stream`. Merged when `ROBONIX_SIM_STREAM=1`. |
 | `bridge/Dockerfile` | Humble + Webots `.deb` + Python deps used by docker-exec'd robonix drivers. |
 | `bridge/entrypoint.sh` | Launch Webots, then `wait` so the container stays alive. Picks display backend per `WEBOTS_HEADLESS_MODE`. |
@@ -97,7 +100,7 @@ NoMachine (both give you a `Mesa llvmpipe` software-rendered X session
 that drops Webots to ~0.01x real-time), or a shared GPU node whose
 physical display is on the BMC instead of an NVIDIA card.
 
-The fix is to (a) start an NVIDIA-backed Xorg **inside** the container
+The fix is to (a) start a GPU-backed Xorg **inside** the container
 — isolated from any host user's display — and (b) use Webots' built-in
 WebSocket streaming so the 3D view shows up in a remote browser.
 
@@ -122,8 +125,9 @@ Backend selection (env on the sim container):
 | `WEBOTS_HEADLESS_MODE` | Effect |
 |---|---|
 | `host` (default w/o stream) | inherit `$DISPLAY` from compose — legacy local-X path |
-| `auto` (default in stream) | NVIDIA Xorg `:48` on the GPU with most free memory; falls back to Xvfb if `/dev/nvidia0` is absent |
+| `auto` (default in stream) | NVIDIA Xorg `:48` if `/dev/nvidia0` present; AMD Xorg `:48` if `/dev/kfd` present; else Xvfb `:99` |
 | `nvidia` | force NVIDIA Xorg `:48` (fails fast if no GPU) |
+| `amd` | force AMD Xorg `:48` (fails fast if no GPU) |
 | `xvfb` | software llvmpipe on `:99` — slow but needs no GPU |
 
 `:48` sits well outside the host's normal X allocator range

@@ -36,11 +36,17 @@ pkill -9 -f "simple_nav\\.atlas_bridge" 2>/dev/null || true
 pkill -9 -f "mapping_service\\.service" 2>/dev/null || true
 
 # Quick GPU memory check — visible signal that the kills actually
-# released CUDA. nvidia-smi may be absent on non-GPU hosts; that's fine.
+# released GPU memory. nvidia-smi / rocm-smi may be absent on non-GPU
+# hosts; that's fine.
 if command -v nvidia-smi >/dev/null 2>&1; then
     used_free=$(nvidia-smi --query-gpu=memory.used,memory.free --format=csv,noheader 2>/dev/null | head -1 || true)
     if [ -n "${used_free:-}" ]; then
         echo "[sim/stop] GPU after host-side cleanup: ${used_free}"
+    fi
+elif command -v rocm-smi >/dev/null 2>&1; then
+    used_free=$(rocm-smi --showmeminfo vram --json 2>/dev/null | head -2 || true)
+    if [ -n "${used_free:-}" ]; then
+        echo "[sim/stop] GPU (ROCm) after host-side cleanup: ${used_free}"
     fi
 fi
 
