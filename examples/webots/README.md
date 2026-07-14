@@ -100,6 +100,32 @@ export VLM_MODEL=gpt-5.5
 
 The deploy manifest references these via `${VLM_*}`.
 
+### Local VLM on AMD GPU (ROCm) — no remote API needed
+
+To run VLM inference on the local AMD Radeon GPU (recommended for the
+AMD Physical AI challenge — keeps all inference on-device):
+
+```bash
+# 1. Build and start the local VLM server (vLLM on ROCm)
+bash docker/vlm-local/start.sh --build
+
+# 2. Export the local endpoint
+export VLM_BASE_URL=http://127.0.0.1:8000/v1
+export VLM_API_KEY=dummy-key
+export VLM_MODEL=Qwen/Qwen2.5-VL-7B-Instruct
+
+# 3. Then boot robonix as usual
+cd examples/webots
+rbnx boot
+```
+
+The local VLM server uses [vLLM](https://github.com/vllm-project/vllm)
+with ROCm to serve an OpenAI-compatible API from an open-weight model
+(default: Qwen2.5-VL-7B-Instruct). All VLM inference runs on the AMD
+GPU — no data leaves the machine.
+
+To stop the VLM server: `bash docker/vlm-local/start.sh --stop`
+
 ## What `rbnx boot` does
 
 1. Reads `robonix_manifest.yaml`, brings up the `system:` block (atlas,

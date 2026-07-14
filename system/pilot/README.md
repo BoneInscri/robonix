@@ -24,6 +24,22 @@ robonix-pilot \
   --vlm-model gpt-5.5
 ```
 
+### Local VLM on AMD GPU (ROCm)
+
+For on-device VLM inference (no remote API), use the bundled local VLM
+server (`docker/vlm-local/`), which runs vLLM on the AMD Radeon GPU:
+
+```sh
+# Start the local VLM server
+bash docker/vlm-local/start.sh --build
+
+# Point pilot at it
+robonix-pilot \
+  --vlm-upstream http://127.0.0.1:8000/v1 \
+  --vlm-api-key dummy-key \
+  --vlm-model Qwen/Qwen2.5-VL-7B-Instruct
+```
+
 Common configuration:
 
 - `--atlas` / `ROBONIX_ATLAS_ENDPOINT`: Atlas endpoint. Defaults to `127.0.0.1:50051`.

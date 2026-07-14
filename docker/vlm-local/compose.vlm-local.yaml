@@ -1,0 +1,44 @@
+# Local VLM server — AMD ROCm.
+#
+# Standalone service that runs an OpenAI-compatible VLM (vLLM) on the
+# local AMD Radeon GPU. Used by robonix pilot so that VLM inference
+# runs on-device instead of calling a remote API.
+#
+# Usage:
+#   docker compose -f compose.vlm-local.yaml up -d
+#
+# Then point pilot at it:
+#   export VLM_BASE_URL=http://127.0.0.1:8000/v1
+#   export VLM_API_KEY=dummy-key
+#   export VLM_MODEL=Qwen/Qwen2.5-VL-7B-Instruct
+
+services:
+  vlm:
+    image: robonix-vlm
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: robonix-vlm
+    network_mode: host
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - video
+    environment:
+      HIP_VISIBLE_DEVICES: "${HIP_VISIBLE_DEVICES:-0}"
+      ROCR_VISIBLE_DEVICES: "${ROCR_VISIBLE_DEVICES:-0}"
+      HF_ENDPOINT: "${HF_ENDPOINT:-https://hf-mirror.com}"
+    volumes:
+      # Cache model weights across container re-creates.
+      - "${VLM_MODEL_CACHE:-~/.cache/huggingface}:/root/.cache/huggingface"
+    command:
+      - --host=0.0.0.0
+      - --port=${VLM_PORT:-8000}
+      - --model=${VLM_MODEL:-Qwen/Qwen2.5-VL-7B-Instruct}
+      - --served-model-name=${VLM_MODEL:-Qwen/Qwen2.5-VL-7B-Instruct}
+      - --trust-remote-code
+      - --dtype=half
+      - --max-model-len=${VLM_MAX_MODEL_LEN:-4096}
+      - --gpu-memory-utilization=${VLM_GPU_MEMORY_UTILIZATION:-0.85}
+    restart: unless-stopped
