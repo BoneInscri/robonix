@@ -44,11 +44,12 @@ CLEAN="${RBNX_BUILD_CLEAN:-}"
 IMG="${ROBONIX_SCENE_IMAGE:-robonix-scene}"
 # Deployment target (same scheme as mapping_rbnx). Chosen by the per-target
 # package manifest's `build:` line:
-#   x86-docker     x86_64 + docker, ROS2 + cu128 torch in image  [default]
-#   jetson-docker  arm64 Jetson + docker, L4T base (docker/Dockerfile.jetson)
-#   jetson-native  arm64 Jetson + host ROS2 + host JetPack torch — no docker;
-#                  builds rbnx-build/venv (--system-site-packages) for the
-#                  light pure-python deps only.
+#   x86-docker        x86_64 + docker, ROS2 + cu128 torch in image  [default]
+#   amd-rocm-docker   x86_64 + docker, ROS2 + ROCm torch in image
+#   jetson-docker     arm64 Jetson + docker, L4T base (docker/Dockerfile.jetson)
+#   jetson-native     arm64 Jetson + host ROS2 + host JetPack torch — no docker;
+#                     builds rbnx-build/venv (--system-site-packages) for the
+#                     light pure-python deps only.
 TARGET="${RBNX_BUILD_TARGET:-x86-docker}"
 
 # ROS distro the scene image is built against. Robonix does not bind to a
@@ -287,7 +288,8 @@ if ! command -v docker >/dev/null 2>&1; then
     echo "[build] error: target $TARGET needs docker on PATH" >&2
     exit 1
 fi
-# jetson-docker uses the L4T-based Dockerfile; x86-docker the default one.
+# jetson-docker uses the L4T-based Dockerfile; x86-docker the default one;
+# amd-rocm-docker also uses the default Dockerfile but with a build arg.
 SCENE_DOCKERFILE="docker/Dockerfile"
 [[ "$TARGET" == "jetson-docker" ]] && SCENE_DOCKERFILE="docker/Dockerfile.jetson"
 
@@ -297,6 +299,10 @@ DOCKER_BUILD_FLAGS=(
     --build-arg "ROS_DISTRO=${ROS_DISTRO_BUILD}"
     --build-arg "ROS_BASE_IMAGE=${ROS_BASE_IMAGE}"
 )
+# Pass GPU backend build arg for amd-rocm-docker target.
+if [[ "$TARGET" == "amd-rocm-docker" ]]; then
+    DOCKER_BUILD_FLAGS+=(--build-arg "ROBONIX_GPU_BACKEND=rocm")
+fi
 [[ "$CLEAN" == "1" ]] && DOCKER_BUILD_FLAGS+=(--no-cache)
 echo "[build] ROS distro: ${ROS_DISTRO_BUILD} (set ROBONIX_SCENE_ROS_DISTRO to change)"
 echo "[build] ROS base image: ${ROS_BASE_IMAGE} (set ROBONIX_SCENE_ROS_BASE_IMAGE to override)"

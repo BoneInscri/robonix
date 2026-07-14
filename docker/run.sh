@@ -69,7 +69,10 @@ if [ "$USE_LOCAL" = true ]; then
     if ! docker image inspect $IMAGE_NAME >/dev/null 2>&1; then
         echo "[*] Local image not found, building..."
         robonix_ensure_local_base_image "$ROBONIX_ROS_DEV_BASE_IMAGE" "osrf/ros:humble-desktop"
-        docker build --pull=false --build-arg "ROS_BASE_IMAGE=$ROBONIX_ROS_DEV_BASE_IMAGE" -t "$IMAGE_NAME" "$SCRIPT_DIR"
+        docker build --pull=false \
+            --build-arg "ROS_BASE_IMAGE=$ROBONIX_ROS_DEV_BASE_IMAGE" \
+            --build-arg "ROBONIX_GPU_BACKEND=${GPU_BACKEND:-cuda}" \
+            -t "$IMAGE_NAME" "$SCRIPT_DIR"
     else
         echo "[*] Local image found, skipping build"
     fi
@@ -85,15 +88,39 @@ else
         if ! docker image inspect $IMAGE_NAME >/dev/null 2>&1; then
             echo "[*] Building local image as fallback..."
             robonix_ensure_local_base_image "$ROBONIX_ROS_DEV_BASE_IMAGE" "osrf/ros:humble-desktop"
-            docker build --pull=false --build-arg "ROS_BASE_IMAGE=$ROBONIX_ROS_DEV_BASE_IMAGE" -t "$IMAGE_NAME" "$SCRIPT_DIR"
+            docker build --pull=false \
+                --build-arg "ROS_BASE_IMAGE=$ROBONIX_ROS_DEV_BASE_IMAGE" \
+                --build-arg "ROBONIX_GPU_BACKEND=${GPU_BACKEND:-cuda}" \
+                -t "$IMAGE_NAME" "$SCRIPT_DIR"
         fi
     }
 fi
 
 GPU_ARGS=""
-if command -v nvidia-smi &> /dev/null; then
-    echo "[*] GPU detected, enabling GPU support..."
+GPU_BACKEND="${ROBONIX_GPU_BACKEND:-}"
+
+# Auto-detect GPU backend if not explicitly set
+if [[ -z "$GPU_BACKEND" ]]; then
+    if command -v nvidia-smi &> /dev/null && nvidia-smi &> /dev/null; then
+        GPU_BACKEND="cuda"
+    elif command -v rocm-smi &> /dev/null && rocm-smi &> /dev/null; then
+        GPU_BACKEND="rocm"
+    elif [[ -e /dev/kfd ]]; then
+        GPU_BACKEND="rocm"
+    fi
+fi
+
+if [[ "$GPU_BACKEND" == "cuda" ]]; then
+    echo "[*] NVIDIA GPU detected, enabling CUDA GPU support..."
     GPU_ARGS="--gpus all --runtime nvidia"
+elif [[ "$GPU_BACKEND" == "rocm" ]]; then
+    echo "[*] AMD ROCm GPU detected, enabling ROCm GPU support..."
+    # ROCm devices: /dev/kfd (compute) + /dev/dri/renderD* (render nodes).
+    # --group-add video grants access to /dev/kfd.
+    GPU_ARGS="--device=/dev/kfd --device=/dev/dri --group-add video"
+    # Export HIP device selection (default: first GPU)
+    export HIP_VISIBLE_DEVICES="${HIP_VISIBLE_DEVICES:-0}"
+    export ROCR_VISIBLE_DEVICES="${ROCR_VISIBLE_DEVICES:-0}"
 fi
 
 # Check if user wants to use host network
@@ -158,6 +185,8 @@ docker run -it \
   -e ROBONIX_META_GRPC_ENDPOINT=${ROBONIX_META_GRPC_ENDPOINT} \
   -e NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all} \
   -e NVIDIA_DRIVER_CAPABILITIES=${NVIDIA_DRIVER_CAPABILITIES:-all} \
+  -e HIP_VISIBLE_DEVICES=${HIP_VISIBLE_DEVICES:-0} \
+  -e ROCR_VISIBLE_DEVICES=${ROCR_VISIBLE_DEVICES:-0} \
   -e XDG_RUNTIME_DIR=/tmp/runtime-root \
   $IMAGE_NAME \
   bash /docker-entrypoint.sh

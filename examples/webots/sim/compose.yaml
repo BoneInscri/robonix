@@ -77,6 +77,10 @@ services:
       # Match docker/run.sh so Webots can use host GL stack when GPU is wired in.
       NVIDIA_VISIBLE_DEVICES: "${NVIDIA_VISIBLE_DEVICES:-all}"
       NVIDIA_DRIVER_CAPABILITIES: "${NVIDIA_DRIVER_CAPABILITIES:-graphics,utility,compute}"
+      # ROCm / AMD GPU env (harmless when using NVIDIA — only effective with
+      # compose.gpu-amd.yaml which passes /dev/kfd + /dev/dri devices)
+      HIP_VISIBLE_DEVICES: "${HIP_VISIBLE_DEVICES:-0}"
+      ROCR_VISIBLE_DEVICES: "${ROCR_VISIBLE_DEVICES:-0}"
       # Webots fetches proto/texture assets from raw.githubusercontent.com on first use.
       # Pass host proxies through if set (Qt Network / curl both honor these):
       HTTP_PROXY: "${HTTP_PROXY:-}"

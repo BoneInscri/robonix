@@ -94,7 +94,10 @@ The script will automatically use values from `.env` if no command-line argument
 ## Notes
 
 - The Docker image includes ROS2 Humble, Rust, and gRPC Python tooling
-- GPU support is enabled if NVIDIA drivers are available on the host
+- GPU support is auto-detected: NVIDIA (nvidia-smi) or AMD ROCm (rocm-smi / /dev/kfd)
+  - NVIDIA: uses `--gpus all --runtime nvidia` and CUDA-based PyTorch wheels
+  - AMD ROCm: uses `--device=/dev/kfd --device=/dev/dri --group-add video` and ROCm PyTorch wheels
+  - Override with `ROBONIX_GPU_BACKEND=cuda` or `ROBONIX_GPU_BACKEND=rocm`
 - The container uses host networking for ROS2 communication
 - X11 forwarding is set up for GUI applications
 

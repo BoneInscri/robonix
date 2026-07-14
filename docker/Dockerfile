@@ -25,14 +25,35 @@ ENV ROS_DOMAIN_ID=0
 ENV ROS_LOCALHOST_ONLY=0
 ENV RMW_IMPLEMENTATION=rmw_zenoh_cpp
 
+# ── GPU backend selection ──────────────────────────────────────────
+# ROBONIX_GPU_BACKEND controls the PyTorch wheel variant:
+#   rocm  → AMD ROCm wheels (default on AMD Radeon hosts)
+#   cuda  → NVIDIA CUDA wheels (default when nvidia-smi exists)
+# The build arg is set by docker/run.sh based on host GPU detection.
+ARG ROBONIX_GPU_BACKEND=cuda
+
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     wget gnupg && \
-    wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb && \
-    dpkg -i cuda-keyring_1.1-1_all.deb && \
-    apt-get update && \
-    apt-get install -y cuda-toolkit-12-4 && \
-    rm cuda-keyring_1.1-1_all.deb
+    rm -rf /var/lib/apt/lists/*
+
+# NVIDIA CUDA toolkit — only installed for the cuda backend.
+RUN if [ "${ROBONIX_GPU_BACKEND}" = "cuda" ]; then \
+        wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb && \
+        dpkg -i cuda-keyring_1.1-1_all.deb && \
+        apt-get update && \
+        apt-get install -y cuda-toolkit-12-4 && \
+        rm cuda-keyring_1.1-1_all.deb && \
+        rm -rf /var/lib/apt/lists/*; \
+    fi
+
+# AMD ROCm — only installed for the rocm backend.
+RUN if [ "${ROBONIX_GPU_BACKEND}" = "rocm" ]; then \
+        apt-get update && \
+        apt-get install -y --no-install-recommends \
+            rocm-core rocm-libs rocm-dev hip-runtime-amd hip-dev && \
+        rm -rf /var/lib/apt/lists/*; \
+    fi
 
 # RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh && \
 #     bash Miniconda3-latest-Linux-x86_64.sh -b -p /opt/miniconda3 && \
@@ -100,8 +121,27 @@ RUN GRPCURL_VERSION=1.9.3 && \
 # RUN conda config --set solver classic && \
 #     conda config --set channel_priority flexible
 
-RUN pip3 install --no-cache-dir \
-    torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+# ── PyTorch install — GPU-backend-aware ─────────────────────────────
+# cuda backend: standard CUDA 12.4 wheels from pytorch.org.
+# rocm backend: ROCm 6.3 wheels from pytorch.org (HIP, no CUDA needed).
+RUN if [ "${ROBONIX_GPU_BACKEND}" = "rocm" ]; then \
+        pip3 install --no-cache-dir \
+            torch torchvision torchaudio \
+            --index-url https://download.pytorch.org/whl/rocm6.3; \
+    else \
+        pip3 install --no-cache-dir \
+            torch torchvision torchaudio \
+            --index-url https://download.pytorch.org/whl/cu124; \
+    fi
+
+# ENV PATH=/opt/miniconda3/bin:$PATH
+
+# RUN conda tos accept || true && \
+#     conda create -n env1 python=3.10 -y && \
+#     conda clean -ya
+
+# RUN conda config --set solver classic && \
+#     conda config --set channel_priority flexible
 
 # RUN conda run -n env1 pip install git+https://github.com/colcon/colcon-cargo.git && \
 #     conda run -n env1 pip install git+https://github.com/colcon/colcon-ros-cargo.git
@@ -112,6 +152,12 @@ ENV PATH=/usr/local/cuda/bin:$PATH
 RUN echo 'export LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/local/cuda/compat:${LD_LIBRARY_PATH:-}' >> ~/.bashrc
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
+# ROCm environment (harmless when using CUDA backend — only effective if /opt/rocm exists)
+ENV ROCM_HOME=/opt/rocm
+ENV PATH=/opt/rocm/bin:${PATH}
+ENV LD_LIBRARY_PATH=/opt/rocm/lib:${LD_LIBRARY_PATH:-}
+ENV HIP_VISIBLE_DEVICES=0
+ENV ROCR_VISIBLE_DEVICES=0
 
 # install rust
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y

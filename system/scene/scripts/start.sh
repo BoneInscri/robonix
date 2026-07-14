@@ -68,9 +68,9 @@ if [[ -n "${ROBONIX_ZENOH_LISTEN:-}" ]]; then
 fi
 
 # GPU passthrough: ConceptGraphs perception (YOLO-World + MobileSAM +
-# CLIP) wants CUDA. Auto-detect via nvidia-smi; opt out by setting
-# ROBONIX_FORCE_CPU=1. Without this flag the container sees CPU only
-# and CLIP/YOLO run ~5x slower.
+# CLIP) wants GPU compute. Auto-detect NVIDIA (nvidia-smi) or AMD ROCm
+# (rocm-smi / /dev/kfd); opt out by setting ROBONIX_FORCE_CPU=1.
+# Without this flag the container sees CPU only and CLIP/YOLO run ~5x slower.
 declare -a GPU_ARGS=()
 if [[ "${ROBONIX_FORCE_CPU:-0}" != "1" ]]; then
     # NVIDIA_DRIVER_CAPABILITIES=all is REQUIRED: with just `--gpus all` (or
@@ -85,6 +85,12 @@ if [[ "${ROBONIX_FORCE_CPU:-0}" != "1" ]]; then
         GPU_ARGS=(--runtime nvidia -e NVIDIA_DRIVER_CAPABILITIES=all)
     elif command -v nvidia-smi &>/dev/null && nvidia-smi &>/dev/null; then
         GPU_ARGS=(--gpus all -e NVIDIA_DRIVER_CAPABILITIES=all)
+    elif { command -v rocm-smi &>/dev/null && rocm-smi &>/dev/null; } || [[ -e /dev/kfd ]]; then
+        # AMD ROCm: pass /dev/kfd (compute) + /dev/dri (render) and the
+        # video group so the container can open /dev/kfd.
+        GPU_ARGS=(--device=/dev/kfd --device=/dev/dri --group-add video \
+            -e HIP_VISIBLE_DEVICES="${HIP_VISIBLE_DEVICES:-0}" \
+            -e ROCR_VISIBLE_DEVICES="${ROCR_VISIBLE_DEVICES:-0}")
     fi
     # Forward CUDA_VISIBLE_DEVICES ONLY when explicitly set (e.g. to pin one
     # GPU). The old unconditional `-e CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-}`

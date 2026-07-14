@@ -3,6 +3,7 @@
 #   docker compose -f compose.yaml -f compose.gpu.yaml up --build
 #
 # If you do not use NVIDIA, skip this file; Intel/AMD may still use /dev/dri from compose.yaml.
+# For AMD ROCm GPU support, use compose.gpu-amd.yaml instead.
 
 services:
   sim:

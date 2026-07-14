@@ -4,8 +4,9 @@
 # from examples/webots/ — robonix drivers are docker-exec'd into the
 # container started here, so the container has to exist first.
 #
-# Auto-detects nvidia-smi to merge compose.gpu.yaml. To force CPU-only,
-# unset CUDA_VISIBLE_DEVICES or set ROBONIX_FORCE_CPU=1.
+# Auto-detects nvidia-smi (NVIDIA) or rocm-smi / /dev/kfd (AMD) to merge the
+# appropriate GPU compose file. To force CPU-only, unset
+# CUDA_VISIBLE_DEVICES or set ROBONIX_FORCE_CPU=1.
 #
 # Re-running is safe: docker compose up reuses the running container.
 # Stop with Ctrl-C, or from another terminal: `docker compose -f compose.yaml down`.
@@ -113,16 +114,23 @@ if [[ ! -f "$ROBONIX_HOST_XAUTH" ]]; then
 fi
 
 CF=(-f compose.yaml)
-if [[ "${ROBONIX_FORCE_CPU:-0}" != "1" ]] && command -v nvidia-smi &>/dev/null && nvidia-smi &>/dev/null; then
-  CF+=(-f compose.gpu.yaml)
-  # Auto-select the GPU with most free memory unless user already set ROBONIX_GPU_ID.
-  if [[ -z "${ROBONIX_GPU_ID:-}" ]]; then
-    ROBONIX_GPU_ID=$(nvidia-smi --query-gpu=index,memory.free --format=csv,noheader,nounits \
-      | sort -t',' -k2 -nr | head -1 | cut -d',' -f1 | tr -d ' ')
-    export ROBONIX_GPU_ID
-    echo "[sim/start] auto-selected GPU $ROBONIX_GPU_ID (most free memory)"
+if [[ "${ROBONIX_FORCE_CPU:-0}" != "1" ]]; then
+  if command -v nvidia-smi &>/dev/null && nvidia-smi &>/dev/null; then
+    CF+=(-f compose.gpu.yaml)
+    # Auto-select the GPU with most free memory unless user already set ROBONIX_GPU_ID.
+    if [[ -z "${ROBONIX_GPU_ID:-}" ]]; then
+      ROBONIX_GPU_ID=$(nvidia-smi --query-gpu=index,memory.free --format=csv,noheader,nounits \
+        | sort -t',' -k2 -nr | head -1 | cut -d',' -f1 | tr -d ' ')
+      export ROBONIX_GPU_ID
+      echo "[sim/start] auto-selected NVIDIA GPU $ROBONIX_GPU_ID (most free memory)"
+    else
+      echo "[sim/start] using user-specified GPU $ROBONIX_GPU_ID"
+    fi
+  elif { command -v rocm-smi &>/dev/null && rocm-smi &>/dev/null; } || [[ -e /dev/kfd ]]; then
+    CF+=(-f compose.gpu-amd.yaml)
+    echo "[sim/start] AMD ROCm GPU detected — merging compose.gpu-amd.yaml"
   else
-    echo "[sim/start] using user-specified GPU $ROBONIX_GPU_ID"
+    echo "[sim/start] no GPU (or ROBONIX_FORCE_CPU=1) — CPU-only Webots"
   fi
 else
   echo "[sim/start] no GPU (or ROBONIX_FORCE_CPU=1) — CPU-only Webots"

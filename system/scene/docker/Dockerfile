@@ -35,6 +35,7 @@
 # ROBONIX_SCENE_ROS_BASE_IMAGE for a mirror, digest-pinned base, or custom image.
 ARG ROS_DISTRO=humble
 ARG ROS_BASE_IMAGE=robonix-ros:humble-ros-base
+ARG ROBONIX_GPU_BACKEND=cuda
 FROM ${ROS_BASE_IMAGE}
 
 # ── Build-time proxy helpers ──────────────────────────────────────
@@ -117,9 +118,11 @@ RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
         --retries 3 \
         --upgrade pip
 
-# torch + torchvision — sm_120 (Blackwell / RTX 5090) requires
-# torch 2.7+ with CUDA 12.8 kernels. cu124 wheels only cover up to
-# sm_90 and will fail with "no kernel image" on Blackwell.
+# torch + torchvision — GPU-backend-aware.
+#
+# CUDA (default): sm_120 (Blackwell / RTX 5090) requires torch 2.7+ with
+# CUDA 12.8 kernels. cu124 wheels only cover up to sm_90 and will fail with
+# "no kernel image" on Blackwell.
 # Aliyun mirror carries cu128 wheels; fall back to upstream PyTorch index.
 # torch / torchvision cu128 only live on the aliyun pytorch-wheels mirror
 # (TUNA has no cu128), so curl those two big wheels from aliyun — curl's
@@ -133,24 +136,33 @@ RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
 # name/version/abi from the filename and rejects e.g. "torch.whl" with
 # "Invalid wheel filename"), which would silently drop every build into
 # the slow fallback below after wasting the full aliyun download.
+#
+# ROCm: install from the PyTorch ROCm wheel index. No aliyun mirror needed.
 RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
-    without-proxy sh -c 'set -eu; \
-        base="https://mirrors.aliyun.com/pytorch-wheels/cu128"; \
-        tw="torch-2.7.1+cu128-cp310-cp310-manylinux_2_28_x86_64.whl"; \
-        tvw="torchvision-0.22.1+cu128-cp310-cp310-manylinux_2_28_x86_64.whl"; \
-        curl -fSL --retry 5 --retry-delay 2 -C - -o "/tmp/$tw" \
-             "$base/torch-2.7.1%2Bcu128-cp310-cp310-manylinux_2_28_x86_64.whl"; \
-        curl -fSL --retry 5 --retry-delay 2 -C - -o "/tmp/$tvw" \
-             "$base/torchvision-0.22.1%2Bcu128-cp310-cp310-manylinux_2_28_x86_64.whl"; \
-        python3 -m pip install --progress-bar on --timeout 60 --retries 3 \
-             "/tmp/$tw" "/tmp/$tvw"; \
-        rm -f "/tmp/$tw" "/tmp/$tvw"' \
-    || with-build-proxy python3 -m pip install \
-        --progress-bar on \
-        --timeout 60 \
-        --retries 3 \
-        --index-url https://download.pytorch.org/whl/cu128 \
-        torch==2.7.1 torchvision==0.22.1
+    if [ "${ROBONIX_GPU_BACKEND}" = "rocm" ]; then \
+        without-proxy python3 -m pip install \
+            --progress-bar on --timeout 120 --retries 3 \
+            --index-url https://download.pytorch.org/whl/rocm6.3 \
+            torch torchvision; \
+    else \
+        without-proxy sh -c 'set -eu; \
+            base="https://mirrors.aliyun.com/pytorch-wheels/cu128"; \
+            tw="torch-2.7.1+cu128-cp310-cp310-manylinux_2_28_x86_64.whl"; \
+            tvw="torchvision-0.22.1+cu128-cp310-cp310-manylinux_2_28_x86_64.whl"; \
+            curl -fSL --retry 5 --retry-delay 2 -C - -o "/tmp/$tw" \
+                 "$base/torch-2.7.1%2Bcu128-cp310-cp310-manylinux_2_28_x86_64.whl"; \
+            curl -fSL --retry 5 --retry-delay 2 -C - -o "/tmp/$tvw" \
+                 "$base/torchvision-0.22.1%2Bcu128-cp310-cp310-manylinux_2_28_x86_64.whl"; \
+            python3 -m pip install --progress-bar on --timeout 60 --retries 3 \
+                 "/tmp/$tw" "/tmp/$tvw"; \
+            rm -f "/tmp/$tw" "/tmp/$tvw"' \
+        || with-build-proxy python3 -m pip install \
+            --progress-bar on \
+            --timeout 60 \
+            --retries 3 \
+            --index-url https://download.pytorch.org/whl/cu128 \
+            torch==2.7.1 torchvision==0.22.1; \
+    fi
 
 # Generic scene deps + concept-graphs perception stack.
 # pip: do NOT use proxy; use PIP_INDEX_URL=TUNA.

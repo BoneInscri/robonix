@@ -70,6 +70,7 @@ implementations alongside the system:
 | x86\_64 | Ubuntu 22.04                                       | ✅ Tested  |
 | x86\_64 | Debian 13                                          | ✅ Tested  |
 | arm64   | NVIDIA Jetson — JetPack 6.2 (L4T 36.4.3, Ubuntu 22.04) | ✅ Tested  |
+| x86\_64 | Ubuntu 22.04 + AMD Radeon GPU (ROCm 6.x)           | 🚧 Experimental |
 | x86\_64 / arm64 | Ubuntu 24.04 and newer                     | 🚧 Planned |
 | x86\_64 / arm64 | Arch Linux                                 | 🚧 Planned |
 | arm64   | macOS                                              | 🚧 Planned |

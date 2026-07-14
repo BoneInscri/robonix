@@ -1,0 +1,35 @@
+# Optional merge: pass AMD Radeon GPU (ROCm) into the stack.
+# Usage from this directory:
+#   docker compose -f compose.yaml -f compose.gpu-amd.yaml up --build
+#
+# Requires: amdgpu kernel driver + ROCm userspace on the host.
+# The /dev/kfd + /dev/dri devices are passed into the container; the `video`
+# group grants access to /dev/kfd. /dev/dri is already bind-mounted by
+# compose.yaml for Mesa GL — this file adds /dev/kfd and the group.
+#
+# start.sh auto-detects rocm-smi or /dev/kfd and merges this file.
+# To force-merge manually:
+#   ROBONIX_GPU_BACKEND=rocm docker compose -f compose.yaml -f compose.gpu-amd.yaml up --build
+
+services:
+  sim:
+    # ROCm needs access to /dev/kfd (compute) in addition to /dev/dri (render).
+    # /dev/dri is already mounted by compose.yaml; here we add /dev/kfd.
+    devices:
+      - /dev/kfd:/dev/kfd
+    # The `video` group on the host owns /dev/kfd. Without --group-add video
+    # the container process cannot open /dev/kfd and torch.cuda (via HIP)
+    # returns False.
+    group_add:
+      - video
+    environment:
+      # HIP device selection (default: first GPU). Override with e.g.
+      # HIP_VISIBLE_DEVICES=1 to use the second GPU.
+      HIP_VISIBLE_DEVICES: "${HIP_VISIBLE_DEVICES:-0}"
+      ROCR_VISIBLE_DEVICES: "${ROCR_VISIBLE_DEVICES:-0}"
+      # Mesa/AMD rendering — prefer the AMD dGPU for GL via Mesa's PRIME.
+      # Unlike NVIDIA, AMD/Mesa uses DRI_PRIME=1 (no vendor-specific env).
+      DRI_PRIME: "1"
+      # Webots headless rendering: AMD uses Mesa (host) just like Intel —
+      # no special Xorg driver modules needed (unlike NVIDIA).
+      # WEBOTS_HEADLESS_MODE=host (already set in compose.yaml) works.
