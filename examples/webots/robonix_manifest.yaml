@@ -109,7 +109,7 @@ service:
     path: ../../services/speech
     config:
       disable_whisper: true
-      funasr_device: cuda
+      funasr_device: auto
       tts_voice: zh-CN-XiaoxiaoNeural
 
   # voiceprint — ECAPA-TDNN speaker identification. Provides

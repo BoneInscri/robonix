@@ -13,9 +13,12 @@
 #   nvidia          start an NVIDIA-backed Xorg on :48 inside the container,
 #                   bound to the GPU with the most free memory (avoids
 #                   disturbing peers on a shared multi-GPU box)
+#   amd             start an AMD-backed Xorg on :48 inside the container,
+#                   using the amdgpu driver (Mesa/Glamor)
 #   xvfb            start Xvfb on :99 (software llvmpipe — slow but
 #                   needs no GPU, useful for CI / quick smoke)
-#   auto            nvidia if /dev/nvidia0 is present, else xvfb
+#   auto            nvidia if /dev/nvidia0 is present, amd if /dev/kfd is
+#                   present, else xvfb
 #
 # Display :48 is intentionally outside the host's typical X allocator
 # range (:0–:12 physical + :1001–:1099 xrdp) so the X socket that leaks
@@ -165,6 +168,65 @@ start_xvfb() {
   echo "[entrypoint] Xvfb ${NVIDIA_DISPLAY} (CPU render)"
 }
 
+start_amd_xorg() {
+  # AMD GPU: use the amdgpu driver with Mesa/Glamor. Unlike NVIDIA,
+  # AMD/Mesa doesn't need a BusID — the kernel driver binds automatically
+  # via /dev/dri/card*. We just need a minimal Xorg config that picks
+  # the amdgpu driver.
+  local dri_card
+  # Find the first render node (e.g. /dev/dri/renderD128)
+  dri_card=$(ls /dev/dri/card* 2>/dev/null | head -1)
+  if [ -z "$dri_card" ]; then
+    echo "[entrypoint] no /dev/dri/card* found for AMD Xorg"
+    return 1
+  fi
+  echo "[entrypoint] AMD GPU: using $dri_card"
+
+  cat >/tmp/xorg-amd.conf <<XCONF
+Section "ServerLayout"
+  Identifier "L0"
+  Screen 0 "S0"
+EndSection
+Section "Device"
+  Identifier "D0"
+  Driver "amdgpu"
+EndSection
+Section "Screen"
+  Identifier "S0"
+  Device "D0"
+  Option "AllowEmptyInitialConfiguration" "true"
+  Option "UseDisplayDevice" "none"
+  SubSection "Display"
+    Virtual 1920 1080
+    Depth 24
+  EndSubSection
+EndSection
+XCONF
+
+  Xorg "$NVIDIA_DISPLAY" -config /tmp/xorg-amd.conf \
+       -noreset -novtswitch -sharevts -nolisten tcp \
+       -logfile "/tmp/Xorg.${XNUM}.log" &
+  local i
+  for i in $(seq 1 30); do
+    [ -S "/tmp/.X11-unix/X${XNUM}" ] && break
+    sleep 0.5
+  done
+  if ! [ -S "/tmp/.X11-unix/X${XNUM}" ]; then
+    echo "[entrypoint] Xorg ${NVIDIA_DISPLAY} (AMD) failed; last 40 lines of /tmp/Xorg.${XNUM}.log:"
+    tail -40 "/tmp/Xorg.${XNUM}.log" 2>&1 || true
+    return 1
+  fi
+  export DISPLAY=$NVIDIA_DISPLAY
+  local renderer
+  renderer=$(glxinfo -B 2>/dev/null | awk -F'string: ' '/OpenGL renderer/ {print $2; exit}')
+  echo "[entrypoint] Xorg ${NVIDIA_DISPLAY} (AMD) up, renderer=$renderer"
+  if ! echo "$renderer" | grep -qi -E "amd|radeon|llvmpipe"; then
+    echo "[entrypoint] WARN: renderer is not AMD — webots may be slow"
+    return 1
+  fi
+  return 0
+}
+
 prepare_full_webots_assets() {
   if [ "${ROBONIX_WEBOTS_DOWNLOAD_ALL_ASSETS:-0}" != "1" ]; then
     return 0
@@ -204,9 +266,12 @@ prepare_full_webots_assets() {
 case "${WEBOTS_HEADLESS_MODE:-host}" in
   host)   : ;;                                # legacy: keep $DISPLAY from compose env
   nvidia) start_nvidia_xorg || exit 1 ;;
+  amd)    start_amd_xorg || exit 1 ;;
   xvfb)   start_xvfb ;;
   auto)
     if [ -e /dev/nvidia0 ] && command -v Xorg >/dev/null 2>&1 && start_nvidia_xorg; then
+      :
+    elif [ -e /dev/kfd ] && command -v Xorg >/dev/null 2>&1 && start_amd_xorg; then
       :
     else
       echo "[entrypoint] auto: falling back to Xvfb :99"
