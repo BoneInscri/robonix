@@ -1,13 +1,13 @@
 # Scene MCP server — AMD ROCm + DOCKER deployment target.
 #
 #   build → RBNX_BUILD_TARGET=amd-rocm-docker scripts/build.sh: docker build
-#           with docker/Dockerfile and ROBONIX_GPU_BACKEND=rocm (ROCm 6.3
+#           with docker/Dockerfile and ROBONIX_GPU_BACKEND=rocm (ROCm 7.2
 #           PyTorch wheels instead of CUDA cu128 x86 wheels).
 #   start → ROBONIX_SCENE_FORCE=docker scripts/start.sh: docker run with
 #           --device=/dev/kfd --device=/dev/dri --group-add video for
 #           AMD GPU passthrough.
 #
-# Use this on an x86_64 host with an AMD Radeon GPU + ROCm 6.x installed.
+# Use this on an x86_64 host with an AMD Radeon GPU + ROCm 7.x installed.
 # Requires: amdgpu kernel driver, ROCm userspace, user in the `video` group.
 manifestVersion: 1
 

@@ -48,10 +48,20 @@ RUN if [ "${ROBONIX_GPU_BACKEND}" = "cuda" ]; then \
     fi
 
 # AMD ROCm — only installed for the rocm backend.
+# Adds the ROCm 7.2 apt repo (the osrf/ros base image doesn't ship it).
+# PyTorch ROCm wheels also bundle ROCm runtime libs, so these packages
+# are mainly for HIP dev headers + rocminfo; the build won't fail if
+# some packages are unavailable (|| true fallback).
 RUN if [ "${ROBONIX_GPU_BACKEND}" = "rocm" ]; then \
+        wget -qO - https://repo.radeon.com/rocm/rocm.gpg.key \
+            | gpg --dearmor -o /usr/share/keyrings/rocm.gpg && \
+        echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/rocm.gpg] https://repo.radeon.com/amdgpu/7.2/ubuntu jammy main' \
+            > /etc/apt/sources.list.d/amdgpu.list && \
+        echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/7.2 jammy main' \
+            > /etc/apt/sources.list.d/rocm.list && \
         apt-get update && \
         apt-get install -y --no-install-recommends \
-            rocm-core rocm-libs rocm-dev hip-runtime-amd hip-dev && \
+            rocm-core rocm-libs rocm-dev hip-runtime-amd hip-dev || true && \
         rm -rf /var/lib/apt/lists/*; \
     fi
 
@@ -123,11 +133,15 @@ RUN GRPCURL_VERSION=1.9.3 && \
 
 # ── PyTorch install — GPU-backend-aware ─────────────────────────────
 # cuda backend: standard CUDA 12.4 wheels from pytorch.org.
-# rocm backend: ROCm 6.3 wheels from pytorch.org (HIP, no CUDA needed).
+# rocm backend: ROCm 7.2 nightly wheels from pytorch.org (HIP, no CUDA needed).
+#   ROCm 7.2 stable wheels are not yet on the standard index, so we use
+#   --pre with the nightly index. The wheels are fully functional; the
+#   "nightly" label just means they haven't been promoted to stable yet.
+#   Verified on Radeon Cloud: ROCm 7.2.1, gfx1100 (RX 7900 XTX), PyTorch 2.9.1.
 RUN if [ "${ROBONIX_GPU_BACKEND}" = "rocm" ]; then \
-        pip3 install --no-cache-dir \
+        pip3 install --no-cache-dir --pre \
             torch torchvision torchaudio \
-            --index-url https://download.pytorch.org/whl/rocm6.3; \
+            --index-url https://download.pytorch.org/whl/nightly/rocm7.2; \
     else \
         pip3 install --no-cache-dir \
             torch torchvision torchaudio \

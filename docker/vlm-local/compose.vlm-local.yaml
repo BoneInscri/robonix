@@ -38,7 +38,7 @@ services:
       - --model=${VLM_MODEL:-Qwen/Qwen2.5-VL-7B-Instruct}
       - --served-model-name=${VLM_MODEL:-Qwen/Qwen2.5-VL-7B-Instruct}
       - --trust-remote-code
-      - --dtype=half
+      - --dtype=bfloat16
       - --max-model-len=${VLM_MAX_MODEL_LEN:-4096}
       - --gpu-memory-utilization=${VLM_GPU_MEMORY_UTILIZATION:-0.85}
     restart: unless-stopped

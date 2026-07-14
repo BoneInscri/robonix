@@ -137,12 +137,14 @@ RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
 # "Invalid wheel filename"), which would silently drop every build into
 # the slow fallback below after wasting the full aliyun download.
 #
-# ROCm: install from the PyTorch ROCm wheel index. No aliyun mirror needed.
+# ROCm: install from the PyTorch ROCm 7.2 nightly wheel index. No aliyun
+# mirror needed. --pre is required because ROCm 7.2 stable wheels are not
+# yet on the standard index. Verified on Radeon Cloud (ROCm 7.2.1, gfx1100).
 RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
     if [ "${ROBONIX_GPU_BACKEND}" = "rocm" ]; then \
         without-proxy python3 -m pip install \
-            --progress-bar on --timeout 120 --retries 3 \
-            --index-url https://download.pytorch.org/whl/rocm6.3 \
+            --pre --progress-bar on --timeout 120 --retries 3 \
+            --index-url https://download.pytorch.org/whl/nightly/rocm7.2 \
             torch torchvision; \
     else \
         without-proxy sh -c 'set -eu; \

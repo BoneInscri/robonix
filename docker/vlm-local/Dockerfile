@@ -29,14 +29,15 @@
 #   export VLM_API_KEY=dummy-key
 #   export VLM_MODEL=Qwen/Qwen2.5-VL-7B-Instruct
 
-# vLLM ROCm wheels require Python 3.12 + ROCm 6.3+.
-# The rocm/pytorch base image provides PyTorch with HIP backend.
-# Using ROCm 6.3 to match the PyTorch wheel index used elsewhere in robonix.
+# vLLM ROCm pre-built wheels require Python 3.12 + ROCm 7.0+.
+# The rocm/pytorch base image provides PyTorch 2.9.1 with HIP backend.
+# Using ROCm 7.2.4 to match the host (Radeon Cloud: ROCm 7.2.1, gfx1100).
+# Python 3.12 is mandatory — vLLM ROCm wheels are NOT published for 3.10/3.11.
 #
 # NOTE: vLLM does NOT publish a pre-built ROCm Docker image on Docker Hub.
-# You must build from this Dockerfile. The build compiles a few ROCm
-# kernels from source (10–20 min on a typical machine).
-ARG ROCM_IMAGE=rocm/pytorch:rocm6.3.2_ubuntu22.04_py3.10_pytorch_release_2.4.1
+# You must build from this Dockerfile. With pre-built wheels the build
+# takes ~5 min (wheel download + model weight download).
+ARG ROCM_IMAGE=rocm/pytorch:rocm7.2.4_ubuntu24.04_py3.12_pytorch_release_2.9.1
 FROM ${ROCM_IMAGE}
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -49,26 +50,28 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # default PyPI (which serves CUDA-only wheels that will fail with
 # "libcudart.so: cannot open shared object file" on AMD GPUs).
 #
-# We use the official vLLM ROCm wheel index:
-#   https://wheels.vllm.ai/<version>/<rocm_tag>/
+# We use the official vLLM ROCm wheel index (new format with /rocm/ prefix):
+#   https://wheels.vllm.ai/rocm/<version>/<rocm_variant>/
 #
 # Pin vLLM version for reproducibility. The wheel tag must match the
-# ROCm version in the base image (rocm6.3 → use the rocm63x tag).
+# ROCm version in the base image:
+#   rocm7.0  → rocm700 (stable, vLLM 0.14.0–0.18.0)
+#   rocm7.2.1 → rocm721 (nightly only, after commit 171775f)
+# We use rocm700 (stable vLLM 0.18.0) — backward-compatible with ROCm 7.2.x
+# hosts (ROCm is forward-compatible within the 7.x series).
 #
-# If the pre-built wheel is not available for your ROCm version, vLLM
-# can be built from source:
-#   pip install https://github.com/vllm-project/vllm/archive/refs/tags/v0.10.0.tar.gz
+# vLLM ROCm pre-built wheels require Python 3.12 (base image provides it).
 # See: https://docs.vllm.ai/en/latest/getting_started/installation/gpu.html#amd-rocm
-ARG VLLM_VERSION=0.10.0
-ARG VLLM_ROCM_TAG=rocm63x
+ARG VLLM_VERSION=0.18.0
+ARG VLLM_ROCM_TAG=rocm700
 RUN pip install --no-cache-dir \
     "vllm==${VLLM_VERSION}+${VLLM_ROCM_TAG}" \
-    --extra-index-url "https://wheels.vllm.ai/${VLLM_VERSION}/${VLLM_ROCM_TAG}/" \
+    --extra-index-url "https://wheels.vllm.ai/rocm/${VLLM_VERSION}/${VLLM_ROCM_TAG}" \
     || {
-        echo "[vlm-local] Pre-built wheel not found, building vLLM from source..." >&2 && \
+        echo "[vlm-local] Pre-built wheel not found, trying without +tag suffix..." >&2 && \
         pip install --no-cache-dir \
             "vllm==${VLLM_VERSION}" \
-            --extra-index-url "https://wheels.vllm.ai/${VLLM_VERSION}/${VLLM_ROCM_TAG}/" ;
+            --extra-index-url "https://wheels.vllm.ai/rocm/${VLLM_VERSION}/${VLLM_ROCM_TAG}" ;
     }
 
 # Verify vLLM can import (catches missing ROCm libraries early).
@@ -93,7 +96,7 @@ ENV VLM_MODEL=Qwen/Qwen2.5-VL-7B-Instruct \
     VLM_PORT=8000 \
     VLM_MAX_MODEL_LEN=4096 \
     VLM_GPU_MEMORY_UTILIZATION=0.85 \
-    VLM_DTYPE=half
+    VLM_DTYPE=bfloat16
 
 RUN python3 -c "\
 from huggingface_hub import snapshot_download; \
@@ -136,8 +139,9 @@ EXPOSE 8000
 #
 # Key flags:
 #   --trust-remote-code  : required for Qwen models (custom modeling code)
-#   --dtype half         : FP16 inference (ROCm supports bf16 too;
-#                          use "bfloat16" if your GPU supports it)
+#   --dtype bfloat16     : BF16 inference — gfx1100 (RDNA3, RX 7900 XTX)
+#                          has native BF16 support; better numerical range
+#                          than FP16, reduces overflow/NaN risk for VLMs
 #   --max-model-len      : max sequence length (4096 balances context vs VRAM)
 #   --gpu-memory-utilization : fraction of GPU memory vLLM can use
 ENTRYPOINT ["python3", "-m", "vllm.entrypoints.openai.api_server"]
@@ -146,6 +150,6 @@ CMD ["--host", "0.0.0.0", \
      "--model", "Qwen/Qwen2.5-VL-7B-Instruct", \
      "--served-model-name", "Qwen/Qwen2.5-VL-7B-Instruct", \
      "--trust-remote-code", \
-     "--dtype", "half", \
+     "--dtype", "bfloat16", \
      "--max-model-len", "4096", \
      "--gpu-memory-utilization", "0.85"]

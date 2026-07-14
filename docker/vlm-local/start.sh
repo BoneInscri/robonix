@@ -46,7 +46,7 @@ PORT="${VLM_PORT:-8000}"
 MODEL="${VLM_MODEL:-Qwen/Qwen2.5-VL-7B-Instruct}"
 MAX_MODEL_LEN="${VLM_MAX_MODEL_LEN:-4096}"
 GPU_MEM_UTIL="${VLM_GPU_MEMORY_UTILIZATION:-0.85}"
-DTYPE="${VLM_DTYPE:-half}"
+DTYPE="${VLM_DTYPE:-bfloat16}"
 
 # ── GPU backend detection ──────────────────────────────────────────
 GPU_ARGS=""

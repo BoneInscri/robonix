@@ -64,7 +64,7 @@ One repo covers four targets, picked by the per-target package manifest
 | Target | manifest | torch source | how it runs |
 |---|---|---|---|
 | **x86-docker** (default) | `package_manifest.yaml` | cu128 x86 wheels baked into `docker/Dockerfile` | `docker run --gpus all` |
-| **amd-rocm-docker** | `package_manifest.yaml` | ROCm 6.3 x86 wheels baked into `docker/Dockerfile` | `docker run --device=/dev/kfd --device=/dev/dri --group-add video` |
+| **amd-rocm-docker** | `package_manifest.yaml` | ROCm 7.2 x86 wheels baked into `docker/Dockerfile` | `docker run --device=/dev/kfd --device=/dev/dri --group-add video` |
 | **jetson-docker** | `package_manifest.jetson-docker.yaml` | NVIDIA jetson-ai-lab wheels in `docker/Dockerfile.jetson` | `docker run --runtime nvidia` |
 | **jetson-native** | `package_manifest.jetson-native.yaml` | **host JetPack torch** (no image) | host `python3 -m scene_service.service` |
 
