@@ -190,19 +190,22 @@ install_system_deps() {
     # 1.1 基础工具
     log "安装基础工具..."
     $SUDO apt-get update -qq
-    $SUDO apt-get install -y -qq \
+    # Ubuntu 24.04 包名变化：libgl1-mesa-glx → libgl1
+    $SUDO apt-get install -y \
         curl wget gnupg2 lsb-release ca-certificates \
         build-essential cmake git unzip \
         python3 python3-pip python3-dev python3-venv \
-        locales locale-gen \
+        locales \
         xvfb xserver-xorg-core mesa-utils \
-        libgl1-mesa-glx libglib2.0-0 libsm6 libxext6 libxrender-dev \
+        libgl1 libglib2.0-0 libsm6 libxext6 libxrender-dev \
         libosmesa6 libglu1-mesa libglfw3 libglfw3-dev \
         libxcb-cursor0 pciutils \
         bash-completion fonts-lmodern \
         alsa-utils \
         software-properties-common \
-        2>/dev/null
+        || {
+            warn "部分包安装失败，尝试继续..."
+        }
 
     # 确保有 en_US.UTF-8（ROS2 需要）
     $SUDO locale-gen en_US en_US.UTF-8 2>/dev/null || true
@@ -226,7 +229,8 @@ install_system_deps() {
 
         $SUDO apt-get update -qq
         # Jazzy 的桌面完整包
-        $SUDO apt-get install -y -qq ros-${ROS_DISTRO}-desktop-full 2>/dev/null
+        $SUDO apt-get install -y ros-${ROS_DISTRO}-desktop-full \
+            || { err "ros-${ROS_DISTRO}-desktop-full 安装失败"; return 1; }
     else
         info "ROS2 $ROS_DISTRO 已安装，跳过。"
     fi
@@ -234,7 +238,7 @@ install_system_deps() {
     # 1.3 ROS2 补充包（Webots 集成 + Nav2 + Zenoh RMW）
     # 注意：Jazzy 的包名前缀是 ros-jazzy-*
     log "安装 ROS2 补充包..."
-    $SUDO apt-get install -y -qq \
+    $SUDO apt-get install -y \
         ros-${ROS_DISTRO}-rmw-zenoh-cpp \
         ros-${ROS_DISTRO}-rmw-fastrtps-cpp \
         ros-${ROS_DISTRO}-nav2-msgs \
@@ -250,7 +254,7 @@ install_system_deps() {
         ros-${ROS_DISTRO}-rviz2 \
         ros-${ROS_DISTRO}-test-msgs \
         python3-colcon-common-extensions \
-        2>/dev/null
+        || warn "部分 ROS2 补充包安装失败，继续..."
 
     # 1.4 Webots 仿真器
     if ! command -v webots &>/dev/null; then
@@ -264,10 +268,11 @@ install_system_deps() {
             warn "镜像下载失败，尝试直连 GitHub..."
             wget -q --show-progress -O /tmp/webots.deb "$webots_deb_url"
         fi
-        $SUDO apt-get install -y -qq /tmp/webots.deb 2>/dev/null || {
+        $SUDO apt-get install -y /tmp/webots.deb || {
             # 如果 apt 安装依赖失败，用 dpkg 强装后修依赖
+            warn "apt 安装 Webots 依赖失败，尝试 dpkg + 修依赖..."
             $SUDO dpkg -i /tmp/webots.deb || true
-            $SUDO apt-get install -f -y -qq 2>/dev/null
+            $SUDO apt-get install -f -y
         }
         rm -f /tmp/webots.deb
     else
@@ -279,10 +284,10 @@ install_system_deps() {
     log "安装 Python 驱动依赖..."
     python3 -m pip install --no-cache-dir --break-system-packages \
         "grpcio>=1.78.0" "protobuf>=6.30,<7" mcp "fastmcp>=3" \
-        numpy Pillow uvicorn httpx 2>/dev/null || \
+        numpy Pillow uvicorn httpx || \
     python3 -m pip install --no-cache-dir \
         "grpcio>=1.78.0" "protobuf>=6.30,<7" mcp "fastmcp>=3" \
-        numpy Pillow uvicorn httpx 2>/dev/null
+        numpy Pillow uvicorn httpx 2>/dev/null || warn "Python 依赖安装有警告，继续..."
 
     # 1.6 ROCm 环境变量（确保 PyTorch 能找到 GPU）
     # 机器上已有 ROCm 7.2.1 + PyTorch 2.9.1，只需要设置环境变量
