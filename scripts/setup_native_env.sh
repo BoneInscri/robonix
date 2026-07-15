@@ -261,9 +261,11 @@ install_system_deps() {
         log "安装 Webots R2025a..."
         local webots_deb_url="https://github.com/cyberbotics/webots/releases/download/R2025a/webots_2025a_amd64.deb"
 
-        # 优先使用本地缓存（预下载好的 deb），避免从 GitHub 重复拉取
+        # 优先检查 /tmp/webots.deb（预置缓存），其次检查仓库本地缓存
         local local_deb="$REPO_ROOT/scripts/webots_2025a_amd64.deb"
-        if [[ -f "$local_deb" ]]; then
+        if [[ -f "/tmp/webots.deb" ]]; then
+            info "发现 /tmp/webots.deb 已存在，跳过下载。"
+        elif [[ -f "$local_deb" ]]; then
             info "发现本地缓存: $local_deb，直接使用。"
             cp "$local_deb" /tmp/webots.deb
         else
