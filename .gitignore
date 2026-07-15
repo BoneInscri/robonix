@@ -71,3 +71,6 @@ env.sh
 develop_specs/
 
 *.egg-info/
+
+# large pre-downloaded binaries (used by setup scripts, not tracked in git)
+scripts/webots_*.deb

@@ -261,31 +261,40 @@ install_system_deps() {
         log "安装 Webots R2025a..."
         local webots_deb_url="https://github.com/cyberbotics/webots/releases/download/R2025a/webots_2025a_amd64.deb"
 
-        # 多个镜像 + 直连，带超时与重试
-        local mirrors=(
-            "https://gh.llkk.cc/"       # GitHub 加速（通用）
-            "https://github.moeyy.xyz/" # GitHub 加速（备用）
-            "https://ghfast.top/"       # 原始镜像
-        )
-        local downloaded=0
-        for mirror in "${mirrors[@]}"; do
-            local fetch_url="${mirror}${webots_deb_url}"
-            info "尝试: $fetch_url"
-            if wget --timeout=60 --tries=3 --progress=dot:giga -O /tmp/webots.deb "$fetch_url"; then
-                downloaded=1
-                break
-            fi
-            warn "该镜像失败，尝试下一个..."
-            rm -f /tmp/webots.deb
-        done
-
-        if [[ "$downloaded" == "0" ]]; then
-            warn "所有镜像失败，尝试直连 GitHub（可能较慢）..."
-            if ! wget --timeout=120 --tries=3 --progress=dot:giga -O /tmp/webots.deb "$webots_deb_url"; then
-                err "Webots 下载失败。请手动下载 webots_2025a_amd64.deb 到 /tmp/webots.deb 后重试。"
-                err "下载地址: $webots_deb_url"
+        # 优先使用本地缓存（预下载好的 deb），避免从 GitHub 重复拉取
+        local local_deb="$REPO_ROOT/scripts/webots_2025a_amd64.deb"
+        if [[ -f "$local_deb" ]]; then
+            info "发现本地缓存: $local_deb，直接使用。"
+            cp "$local_deb" /tmp/webots.deb
+        else
+            # 多个镜像 + 直连，带超时与重试
+            local mirrors=(
+                "https://gh.llkk.cc/"       # GitHub 加速（通用）
+                "https://github.moeyy.xyz/" # GitHub 加速（备用）
+                "https://ghfast.top/"       # 原始镜像
+            )
+            local downloaded=0
+            for mirror in "${mirrors[@]}"; do
+                local fetch_url="${mirror}${webots_deb_url}"
+                info "尝试: $fetch_url"
+                if wget --timeout=60 --tries=3 --progress=dot:giga -O /tmp/webots.deb "$fetch_url"; then
+                    downloaded=1
+                    break
+                fi
+                warn "该镜像失败，尝试下一个..."
                 rm -f /tmp/webots.deb
-                return 1
+            done
+
+            if [[ "$downloaded" == "0" ]]; then
+                warn "所有镜像失败，尝试直连 GitHub（可能较慢）..."
+                if ! wget --timeout=120 --tries=3 --progress=dot:giga -O /tmp/webots.deb "$webots_deb_url"; then
+                    err "Webots 下载失败。请手动下载 webots_2025a_amd64.deb 放到以下任一位置后重试："
+                    err "  1) $local_deb"
+                    err "  2) /tmp/webots.deb"
+                    err "下载地址: $webots_deb_url"
+                    rm -f /tmp/webots.deb
+                    return 1
+                fi
             fi
         fi
         $SUDO apt-get install -y /tmp/webots.deb || {
