@@ -260,13 +260,33 @@ install_system_deps() {
     if ! command -v webots &>/dev/null; then
         log "安装 Webots R2025a..."
         local webots_deb_url="https://github.com/cyberbotics/webots/releases/download/R2025a/webots_2025a_amd64.deb"
-        local webots_mirror="https://ghfast.top/"
-        local fetch_url="${webots_mirror}${webots_deb_url}"
 
-        # 尝试镜像，失败则直连
-        if ! wget -q --show-progress -O /tmp/webots.deb "$fetch_url"; then
-            warn "镜像下载失败，尝试直连 GitHub..."
-            wget -q --show-progress -O /tmp/webots.deb "$webots_deb_url"
+        # 多个镜像 + 直连，带超时与重试
+        local mirrors=(
+            "https://gh.llkk.cc/"       # GitHub 加速（通用）
+            "https://github.moeyy.xyz/" # GitHub 加速（备用）
+            "https://ghfast.top/"       # 原始镜像
+        )
+        local downloaded=0
+        for mirror in "${mirrors[@]}"; do
+            local fetch_url="${mirror}${webots_deb_url}"
+            info "尝试: $fetch_url"
+            if wget --timeout=60 --tries=3 --progress=dot:giga -O /tmp/webots.deb "$fetch_url"; then
+                downloaded=1
+                break
+            fi
+            warn "该镜像失败，尝试下一个..."
+            rm -f /tmp/webots.deb
+        done
+
+        if [[ "$downloaded" == "0" ]]; then
+            warn "所有镜像失败，尝试直连 GitHub（可能较慢）..."
+            if ! wget --timeout=120 --tries=3 --progress=dot:giga -O /tmp/webots.deb "$webots_deb_url"; then
+                err "Webots 下载失败。请手动下载 webots_2025a_amd64.deb 到 /tmp/webots.deb 后重试。"
+                err "下载地址: $webots_deb_url"
+                rm -f /tmp/webots.deb
+                return 1
+            fi
         fi
         $SUDO apt-get install -y /tmp/webots.deb || {
             # 如果 apt 安装依赖失败，用 dpkg 强装后修依赖
