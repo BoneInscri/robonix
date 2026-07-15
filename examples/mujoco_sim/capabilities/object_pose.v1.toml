@@ -1,0 +1,10 @@
+# MuJoCo object pose — get 3D position and rotation of a named object.
+[contract]
+id      = "mujoco_sim/object/pose"
+version = "1"
+kind    = "primitive"
+idl     = "std_msgs/srv/String.srv"
+description = "Get the 3D position and rotation of a named object in the MuJoCo scene."
+
+[mode]
+type = "rpc"

@@ -1,0 +1,10 @@
+# MuJoCo scene step — advance simulation N frames.
+[contract]
+id      = "mujoco_sim/scene/step"
+version = "1"
+kind    = "primitive"
+idl     = "std_msgs/srv/String.srv"
+description = "Step the MuJoCo simulation N frames with zero action."
+
+[mode]
+type = "rpc"

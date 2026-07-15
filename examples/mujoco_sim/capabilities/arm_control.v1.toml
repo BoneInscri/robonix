@@ -1,0 +1,10 @@
+# MuJoCo arm end-effector control — move to target position + grip.
+[contract]
+id      = "mujoco_sim/arm/control"
+version = "1"
+kind    = "primitive"
+idl     = "std_msgs/srv/String.srv"
+description = "Move Franka arm end-effector to target XYZ and set gripper. Returns JSON ack with final position."
+
+[mode]
+type = "rpc"

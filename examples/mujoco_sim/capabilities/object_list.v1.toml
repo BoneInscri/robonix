@@ -1,0 +1,10 @@
+# MuJoCo object list — list all objects in the scene.
+[contract]
+id      = "mujoco_sim/object/list"
+version = "1"
+kind    = "primitive"
+idl     = "std_msgs/srv/String.srv"
+description = "List all named objects in the MuJoCo scene."
+
+[mode]
+type = "rpc"

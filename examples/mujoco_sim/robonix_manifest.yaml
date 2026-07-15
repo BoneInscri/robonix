@@ -31,7 +31,7 @@ system:
 # 不需要 ROS2，MuJoCo 直接在进程内运行
 primitive:
   - name: mujoco_sim
-    path: ./.
+    path: .
     config:
       env: Lift           # robosuite 环境名 (Lift, Stack, NutAssembly, ...)
       robot: Panda        # 机械臂型号 (Panda, Sawyer, Jaco, ...)
@@ -64,7 +64,7 @@ service:
   # MuJoCo 模式下 pilot 直接通过 MCP 控制 arm，不需要 nav2。
 
 # 技能注册
-skill:
+skill: []
   # explore 技能依赖 nav2，MuJoCo 模式下暂不启用
   # - name: explore
   #   url: https://github.com/syswonder/skill-explore-rbnx

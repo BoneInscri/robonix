@@ -21,13 +21,13 @@ package:
   version: 0.1.0
   vendor: robonix
   description: MuJoCo simulation primitive — Franka arm grasping via robosuite, exposed through robonix MCP contracts.
+  tags: [primitive, mujoco, simulation, arm]
+  maintainers:
+    - Robonix Team <robonix@syswonder.org>
   license: MulanPSL-2.0
 
 build: bash scripts/build.sh
-
-start: |
-  export PYTHONPATH="$(rbnx path robonix-api):$(pwd)/rbnx-build/codegen/proto_gen:$(pwd)/rbnx-build/codegen/robonix_mcp_types:${PYTHONPATH:-}"
-  exec rbnx-build/venv/bin/python -m mujoco_sim.driver
+start: bash scripts/start.sh
 
 stop: |
   pkill -TERM -f "[p]ython -m mujoco_sim.driver|[m]ujoco_sim.driver" 2>/dev/null || true
@@ -35,15 +35,22 @@ stop: |
   pkill -KILL -f "[p]ython -m mujoco_sim.driver|[m]ujoco_sim.driver" 2>/dev/null || true
 
 capabilities:
-  # 复用 robonix 标准 camera contract
+  # 复用 robonix 标准 camera/lidar contract（定义在 capabilities/ 目录根）
   - name: robonix/primitive/camera/snapshot
   - name: robonix/primitive/camera/depth_snapshot
-  # 复用 robonix 标准 lidar contract
   - name: robonix/primitive/lidar/snapshot
-  # MuJoCo 仿真特有能力
+  # MuJoCo 仿真特有能力（本地 contract 定义）
   - name: mujoco_sim/arm/control
+    path: capabilities/arm_control.v1.toml
   - name: mujoco_sim/arm/get_state
+    path: capabilities/arm_get_state.v1.toml
   - name: mujoco_sim/scene/reset
+    path: capabilities/scene_reset.v1.toml
   - name: mujoco_sim/scene/step
+    path: capabilities/scene_step.v1.toml
   - name: mujoco_sim/object/list
+    path: capabilities/object_list.v1.toml
   - name: mujoco_sim/object/pose
+    path: capabilities/object_pose.v1.toml
+
+depends: []

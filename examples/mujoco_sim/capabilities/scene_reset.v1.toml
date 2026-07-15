@@ -1,0 +1,10 @@
+# MuJoCo scene reset — return to initial state.
+[contract]
+id      = "mujoco_sim/scene/reset"
+version = "1"
+kind    = "primitive"
+idl     = "std_msgs/srv/String.srv"
+description = "Reset the MuJoCo simulation to initial state."
+
+[mode]
+type = "rpc"

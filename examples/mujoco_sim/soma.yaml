@@ -1,0 +1,79 @@
+# Soma body model for MuJoCo Franka Panda deployment.
+# Describes the robot's physical topology for soma (body model service).
+# Unlike webots (mobile robot), this is a fixed-base manipulator.
+robot:
+  id: franka_panda_mujoco
+  display_name: "MuJoCo Franka Panda Arm"
+  family: fixed_arm
+  root_part: base
+  dimensions: { length_m: 0.6, width_m: 0.6, height_m: 1.2 }
+  footprint:
+    base_frame: base_link
+    points:
+      - [0.3, 0.3]
+      - [0.3, -0.3]
+      - [-0.3, -0.3]
+      - [-0.3, 0.3]
+  mass_kg: 20.0
+  passable_door_width_m: 0.0  # fixed arm, no navigation
+  exports:
+    - provider_id: mujoco_sim
+      capabilities:
+        - { path: robonix/primitive/camera/snapshot, description: "Capture RGB image from MuJoCo agentview camera." }
+        - { path: robonix/primitive/camera/depth_snapshot, description: "Capture depth image from MuJoCo camera." }
+        - { path: robonix/primitive/lidar/snapshot, description: "Simulated 2D laser scan of table surface." }
+        - { path: mujoco_sim/arm/control, description: "Move Franka arm end-effector to target position and set gripper." }
+        - { path: mujoco_sim/arm/get_state, description: "Get current arm joint positions and end-effector pose." }
+        - { path: mujoco_sim/scene/reset, description: "Reset MuJoCo simulation to initial state." }
+        - { path: mujoco_sim/scene/step, description: "Step simulation N frames with zero action." }
+        - { path: mujoco_sim/object/list, description: "List all named objects in the MuJoCo scene." }
+        - { path: mujoco_sim/object/pose, description: "Get 3D position and rotation of a named object." }
+  components:
+    - id: base
+      type: fixed_base
+      exports: []
+      components:
+        - id: arm
+          type: manipulator_arm
+          model: Franka Panda (7-DOF)
+          exports:
+            - provider_id: mujoco_sim
+              capabilities:
+                - { path: mujoco_sim/arm/control, description: "OSC end-effector position control." }
+                - { path: mujoco_sim/arm/get_state, description: "Joint positions and ee pose." }
+          components:
+            - id: gripper
+              type: parallel_jaw_gripper
+              model: Panda parallel-jaw
+              exports: []
+        - id: head_camera
+          type: rgbd_camera
+          frame_id: mujoco_camera_rgb
+          exports:
+            - provider_id: mujoco_sim
+              capabilities:
+                - { path: robonix/primitive/camera/snapshot, description: "RGB JPEG from agentview." }
+                - { path: robonix/primitive/camera/depth_snapshot, description: "Depth image from agentview." }
+        - id: simulated_lidar
+          type: lidar_2d
+          exports:
+            - provider_id: mujoco_sim
+              capabilities:
+                - { path: robonix/primitive/lidar/snapshot, description: "Simulated 2D scan from depth image." }
+
+description:
+  summary: "A MuJoCo Franka Panda arm deployment for grasping tasks via robosuite."
+  can_do:
+    - "Capture RGB and depth images from the agentview camera."
+    - "Control the Franka arm end-effector position via OSC."
+    - "Open and close the parallel-jaw gripper."
+    - "Query object positions in the scene."
+    - "Reset and step the simulation."
+  cannot_do:
+    - "Navigate — this is a fixed-base arm, no mobile base."
+    - "Use SLAM or mapping — no ROS2 topics."
+    - "Hear or speak — no audio devices in MuJoCo."
+  notes:
+    - "MuJoCo runs in-process; no Docker or ROS2 required."
+    - "Use robosuite Lift task for default grasping demo."
+    - "RL policy can be trained with scripts/train_policy.py."

@@ -1,0 +1,10 @@
+# MuJoCo arm state query — joint positions, ee pose, gripper state.
+[contract]
+id      = "mujoco_sim/arm/get_state"
+version = "1"
+kind    = "primitive"
+idl     = "std_msgs/srv/String.srv"
+description = "Get current arm state: joint positions, end-effector pose, gripper state."
+
+[mode]
+type = "rpc"
