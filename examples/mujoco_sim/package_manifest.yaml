@@ -1,0 +1,49 @@
+# MuJoCo simulation primitive — robosuite Franka arm environment.
+#
+# Exposes camera/lidar/arm/scene capabilities via MCP. Does NOT use ROS2 —
+# MuJoCo runs in-process and the primitive serves snapshots directly through
+# robonix's MCP contract layer.
+#
+# Capabilities:
+#   robonix/primitive/camera/snapshot       MCP   RGB JPEG from MuJoCo camera
+#   robonix/primitive/camera/depth_snapshot MCP   depth image from MuJoCo
+#   robonix/primitive/lidar/snapshot        MCP   simulated 2D laser scan
+#   mujoco_sim/arm/control                  MCP   arm end-effector / joint control
+#   mujoco_sim/arm/get_state                MCP   current arm state
+#   mujoco_sim/scene/reset                  MCP   reset simulation
+#   mujoco_sim/scene/step                   MCP   manual sim step
+#   mujoco_sim/object/list                  MCP   list objects in scene
+#   mujoco_sim/object/pose                  MCP   get object pose
+manifestVersion: 1
+
+package:
+  name: com.robonix.example.mujoco_sim
+  version: 0.1.0
+  vendor: robonix
+  description: MuJoCo simulation primitive — Franka arm grasping via robosuite, exposed through robonix MCP contracts.
+  license: MulanPSL-2.0
+
+build: bash scripts/build.sh
+
+start: |
+  export PYTHONPATH="$(rbnx path robonix-api):$(pwd)/rbnx-build/codegen/proto_gen:$(pwd)/rbnx-build/codegen/robonix_mcp_types:${PYTHONPATH:-}"
+  exec rbnx-build/venv/bin/python -m mujoco_sim.driver
+
+stop: |
+  pkill -TERM -f "[p]ython -m mujoco_sim.driver|[m]ujoco_sim.driver" 2>/dev/null || true
+  sleep 1
+  pkill -KILL -f "[p]ython -m mujoco_sim.driver|[m]ujoco_sim.driver" 2>/dev/null || true
+
+capabilities:
+  # 复用 robonix 标准 camera contract
+  - name: robonix/primitive/camera/snapshot
+  - name: robonix/primitive/camera/depth_snapshot
+  # 复用 robonix 标准 lidar contract
+  - name: robonix/primitive/lidar/snapshot
+  # MuJoCo 仿真特有能力
+  - name: mujoco_sim/arm/control
+  - name: mujoco_sim/arm/get_state
+  - name: mujoco_sim/scene/reset
+  - name: mujoco_sim/scene/step
+  - name: mujoco_sim/object/list
+  - name: mujoco_sim/object/pose

@@ -1,0 +1,74 @@
+manifestVersion: 1
+name: robonix-mujoco-deploy
+
+env:
+  SCENE_MAP_ID: mujoco_lab
+
+# boot in sequence: system → execution → interaction
+system:
+  atlas:
+    listen: 0.0.0.0:50051
+    log: info
+  scene:
+    log: info
+    camera_frame: mujoco_camera_rgb
+  executor:
+    listen: 127.0.0.1:50061
+    log: info
+  pilot:
+    listen: 127.0.0.1:50071
+    log: debug
+    vlm:
+      upstream: ${VLM_BASE_URL}
+      api_key: ${VLM_API_KEY}
+      model: ${VLM_MODEL}
+      api_format: openai
+  liaison:
+    listen: 0.0.0.0:50081
+    log: info
+
+# MuJoCo simulation primitive — 替代 Webots 的所有 tiago_* primitives
+# 不需要 ROS2，MuJoCo 直接在进程内运行
+primitive:
+  - name: mujoco_sim
+    path: ./.
+    config:
+      env: Lift           # robosuite 环境名 (Lift, Stack, NutAssembly, ...)
+      robot: Panda        # 机械臂型号 (Panda, Sawyer, Jaco, ...)
+      controller: OSC_POSE  # 操作空间控制器
+      gripper: Panda      # 夹爪型号
+      camera: agentview   # 相机视角
+      cam_h: 256
+      cam_w: 256
+
+# 系统服务（复用 robonix 标准，不需要 ROS2）
+service:
+  - name: memory
+    path: ../../services/memsearch
+    config:
+      backend: sqlite
+
+  - name: speech
+    path: ../../services/speech
+    config:
+      disable_whisper: true
+      funasr_device: auto
+      tts_voice: zh-CN-XiaoxiaoNeural
+
+  - name: voiceprint
+    path: ../../services/voiceprint
+    config: {}
+
+  # 注意：mapping 和 nav2 依赖 ROS2，MuJoCo 模式下暂不启用。
+  # 如果需要 SLAM/导航，需要额外写 MuJoCo → ROS2 的桥接。
+  # MuJoCo 模式下 pilot 直接通过 MCP 控制 arm，不需要 nav2。
+
+# 技能注册
+skill:
+  # explore 技能依赖 nav2，MuJoCo 模式下暂不启用
+  # - name: explore
+  #   url: https://github.com/syswonder/skill-explore-rbnx
+  #   branch: main
+  #   config:
+  #     explore_mode: frontier
+  #     timeout_s: 600
