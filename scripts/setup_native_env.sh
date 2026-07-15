@@ -128,9 +128,10 @@ check_env() {
     local rocm_smi="/opt/rocm/bin/rocm-smi"
     if [[ -x "$rocm_smi" ]]; then
         info "GPU: AMD ROCm ($($rocm_smi --showproductname 2>/dev/null | grep -i 'Card series' | head -1 || echo 'detected'))"
+        # rocm-smi --showmeminfo vram 输出格式可能变化，用 grep 提取数字
         local vram_bytes
-        vram_bytes=$($rocm_smi --showmeminfo vram 2>/dev/null | awk '/VRAM Total/{print $6; exit}')
-        if [[ -n "$vram_bytes" ]]; then
+        vram_bytes=$($rocm_smi --showmeminfo vram 2>/dev/null | grep -i 'VRAM Total Memory' | grep -oE '[0-9]+' | head -1 || true)
+        if [[ -n "${vram_bytes:-}" ]]; then
             local vram_gb=$(( vram_bytes / 1073741824 ))
             info "VRAM: ${vram_gb} GB"
         fi
