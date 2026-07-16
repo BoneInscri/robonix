@@ -335,7 +335,8 @@ def init(cfg):
             spk_dev_id = None
 
     if mic_dev_id is None and spk_dev_id is None:
-        return Err("no ALSA capture or playback device available")
+        log.warning("no ALSA capture or playback device available — starting in degraded mode")
+        return Ok()
 
     if mic_dev_id is not None:
         configured_mic_rate = cfg.get("mic_sample_rate") or os.environ.get("AUDIO_MIC_SAMPLE_RATE")
