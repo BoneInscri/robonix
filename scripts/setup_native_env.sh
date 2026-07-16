@@ -464,10 +464,10 @@ install_system_deps() {
     # 注意：Ubuntu 24.04 的 Python 是 3.12，需要 --break-system-packages
     log "安装 Python 驱动依赖..."
     python3 -m pip install --no-cache-dir --break-system-packages \
-        "grpcio>=1.78.0" "grpcio-tools>=1.78.0" "protobuf>=6.30,<7" mcp "fastmcp>=3" \
+        "grpcio>=1.78.0" "grpcio-tools>=1.78.0" "protobuf>=7.0" mcp "fastmcp>=3" \
         numpy Pillow uvicorn httpx || \
     python3 -m pip install --no-cache-dir \
-        "grpcio>=1.78.0" "grpcio-tools>=1.78.0" "protobuf>=6.30,<7" mcp "fastmcp>=3" \
+        "grpcio>=1.78.0" "grpcio-tools>=1.78.0" "protobuf>=7.0" mcp "fastmcp>=3" \
         numpy Pillow uvicorn httpx 2>/dev/null || warn "Python 依赖安装有警告，继续..."
 
     # 1.6 ROCm 环境变量 + PyTorch 安装
