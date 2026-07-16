@@ -346,19 +346,28 @@ install_system_deps() {
             if [[ -n "$qt_version_err" ]]; then
                 warn "系统 Qt6 版本 < 6.5，Webots R2025a 需要 Qt 6.5+"
                 info "尝试方案 A: 检查 Webots 是否自带 Qt 库..."
+                # Webots R2025a 自带 Qt 6.5.3 在 /usr/local/webots/lib/webots/
                 local webots_qt_dir=""
-                for d in /usr/local/webots/lib/qt6 /usr/local/webots/lib /usr/local/webots/bin; do
+                for d in /usr/local/webots/lib/webots /usr/local/webots/lib/qt6 /usr/local/webots/lib /usr/local/webots/bin; do
                     if [[ -f "$d/libQt6Core.so.6" ]]; then
                         webots_qt_dir="$d"
                         break
                     fi
                 done
                 if [[ -n "$webots_qt_dir" ]]; then
-                    info "发现 Webots 自带 Qt 库: $webots_qt_dir"
-                    # 写入 ld.so.conf 让系统优先加载 Webots 的 Qt
+                    info "发现 Webots 自带 Qt 6.5 库: $webots_qt_dir"
+                    # 写入 ld.so.conf 让系统优先加载 Webots 的 Qt6.5
                     echo "$webots_qt_dir" > /etc/ld.so.conf.d/webots-qt.conf
                     ldconfig
                     info "已将 Webots Qt 路径写入 /etc/ld.so.conf.d/webots-qt.conf"
+                    # 验证 Qt_6.5 错误是否消失
+                    local qt_check
+                    qt_check=$(ldd /usr/local/webots/bin/webots-bin 2>&1 | grep "Qt_6.5.*not found" || true)
+                    if [[ -z "$qt_check" ]]; then
+                        info "✅ Qt 6.5 版本问题已解决"
+                    else
+                        warn "Qt 6.5 版本问题仍存在，可能需要设置 LD_LIBRARY_PATH"
+                    fi
                 else
                     info "Webots 未自带 Qt6 库，尝试方案 B: 添加 PPA..."
                     # 方案 B: 尝试添加 PPA 获取更高版本 Qt6
