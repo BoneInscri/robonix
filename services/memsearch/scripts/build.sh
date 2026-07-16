@@ -52,6 +52,10 @@ fi
 echo "[build] uv sync (pyproject.toml → $VENV)"
 VIRTUAL_ENV="$PKG/$VENV" uv sync --active --no-managed-python
 
+# grpcio-tools>=1.78 generates protobuf gencode 7.x, but the workspace
+# uv.lock may pin protobuf <7. Force the runtime to match.
+uv pip install --python "$VENV/bin/python" "protobuf>=7.0"
+
 # ── 3. Codegen (.proto + grpc stubs + MCP dataclasses → rbnx-build/codegen/) ─
 FLAGS=(--mcp)
 # The complete build directory was already removed above. A second clean here
