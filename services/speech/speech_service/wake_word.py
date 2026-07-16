@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Iterable, Sequence
 
 import numpy as np
-import sherpa_onnx
 
 
 def prepare_keywords_file(
@@ -71,6 +70,8 @@ class WakeWordBackend:
     """Streaming open-vocabulary KWS implemented inside the Speech service."""
 
     def __init__(self, model_dir: Path, keywords_file: Path, num_threads: int = 2) -> None:
+        import sherpa_onnx  # lazy — may be absent when k2-fsa wheel index is unreachable
+
         self._spotter = sherpa_onnx.KeywordSpotter(
             tokens=str(model_dir / "tokens.txt"),
             encoder=str(model_dir / "encoder-epoch-13-avg-2-chunk-8-left-64.int8.onnx"),

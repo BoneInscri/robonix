@@ -104,9 +104,27 @@ VIRTUAL_ENV="$PKG/$VENV" uv sync "${SYNC_ARGS[@]}"
 # Wake-word detection is a core Speech capability, independent of whether ASR
 # and TTS use local models or Tencent. The runtime libraries are published on
 # sherpa-onnx's wheel index rather than PyPI.
-uv pip install --python "$VENV/bin/python" --no-index \
-    --find-links "${SHERPA_ONNX_WHEEL_INDEX:-https://k2-fsa.github.io/sherpa/onnx/cpu-cn.html}" \
-    sherpa-onnx-bin==1.13.4 sherpa-onnx-core==1.13.4
+# Try the primary index first (set SHERPA_ONNX_WHEEL_INDEX to override the
+# default), then fall back to the global index. If both are unreachable, the
+# build continues without sherpa-onnx; wake-word degrades gracefully at runtime.
+SHERPA_INDEX_PRIMARY="${SHERPA_ONNX_WHEEL_INDEX:-https://k2-fsa.github.io/sherpa/onnx/cpu-cn.html}"
+SHERPA_INDEX_FALLBACK="https://k2-fsa.github.io/sherpa/onnx/cpu.html"
+echo "[build] installing sherpa-onnx wheel from $SHERPA_INDEX_PRIMARY"
+if ! uv pip install --python "$VENV/bin/python" --no-index \
+    --find-links "$SHERPA_INDEX_PRIMARY" \
+    sherpa-onnx-bin==1.13.4 sherpa-onnx-core==1.13.4 2>/dev/null; then
+    echo "[build] primary index failed, trying $SHERPA_INDEX_FALLBACK"
+    if ! uv pip install --python "$VENV/bin/python" --no-index \
+        --find-links "$SHERPA_INDEX_FALLBACK" \
+        sherpa-onnx-bin==1.13.4 sherpa-onnx-core==1.13.4 2>/dev/null; then
+        echo "[build] WARNING: sherpa-onnx wheel install failed (k2-fsa.github.io unreachable)."
+        echo "[build]   Wake-word detection will be unavailable at runtime. ASR/TTS unaffected."
+        echo "[build]   To fix: download sherpa-onnx-bin==1.13.4 and sherpa-onnx-core==1.13.4"
+        echo "[build]   wheels, then set SHERPA_ONNX_WHEEL_INDEX=file:///path/to/dir and rebuild."
+        mkdir -p "$BUILD"
+        touch "$BUILD/.no-sherpa-onnx"
+    fi
+fi
 
 # ── 2b. Jetson: use the host's JetPack CUDA torch, not PyPI's ──────────────
 # On Jetson (aarch64), PyPI ships a torch built against a CUDA version that
@@ -181,7 +199,7 @@ if [[ "${SKIP_MODEL_DOWNLOAD:-}" != "1" ]]; then
         tar -xjf "$ARCHIVE" -C "$BUILD/models"
         rm -f "$ARCHIVE"
     fi
-    "$PY" -c 'import sherpa_onnx; print("[build] sherpa-onnx", sherpa_onnx.__version__)'
+    "$PY" -c 'import sherpa_onnx; print("[build] sherpa-onnx", sherpa_onnx.__version__)' 2>/dev/null || true
 else
     echo "[build] skipping wake-word model download (SKIP_MODEL_DOWNLOAD=1)."
 fi
