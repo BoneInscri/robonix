@@ -289,6 +289,36 @@ for pkg in primitives/tiago_chassis primitives/tiago_camera primitives/tiago_lid
 done
 ```
 
+### 5.6 离线环境：预下载 Speech 服务依赖
+
+`rbnx boot` 首次构建 speech 服务时需要从 GitHub 下载 sherpa-onnx wheel
+和 wake-word 模型。如果目标服务器无法访问 GitHub，在有网络的机器上提前下载
+并放入仓库的 `pre-file/` 目录，构建脚本会自动检测使用。
+
+```bash
+# ── 在有网络的机器上执行 ──
+
+# 1. sherpa-onnx 运行时 wheel（两个文件，x86_64 Python 3.12）
+pip3 download --no-index \
+    --find-links https://k2-fsa.github.io/sherpa/onnx/cpu.html \
+    --dest /tmp/sherpa-wheels \
+    sherpa-onnx-bin==1.13.4 sherpa-onnx-core==1.13.4
+
+# 2. wake-word 模型（~32MB）
+wget https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-zh-en-3M-2025-12-20.tar.bz2
+
+# 3. 将三个文件复制到 robonix 仓库
+cp /tmp/sherpa-wheels/sherpa_onnx_bin-*.whl /path/to/robonix/pre-file/
+cp /tmp/sherpa-wheels/sherpa_onnx_core-*.whl /path/to/robonix/pre-file/
+cp sherpa-onnx-kws-zipformer-zh-en-3M-2025-12-20.tar.bz2 /path/to/robonix/pre-file/
+```
+
+然后将整个 `robonix/` 目录同步到目标服务器，`rbnx boot` 会自动从 `pre-file/`
+加载这些文件，不走网络。
+
+> **说明**：wake-word 是 Speech 服务的可选功能。如果不需要语音唤醒，
+> 也可以直接设置 `SKIP_MODEL_DOWNLOAD=1 rbnx boot` 跳过下载，ASR 和 TTS 不受影响。
+
 ---
 
 ## 6. 改造 driver 脚本（docker exec → 原生运行）
