@@ -952,23 +952,39 @@ export ROBONIX_WEBOTS_ROBOT="\${ROBONIX_WEBOTS_ROBOT:-tiago_webots.urdf}"
 # 无头模式：如果需要浏览器流式查看（云服务器场景）
 if [[ "\${WEBOTS_STREAM:-0}" == "1" ]]; then
     export DISPLAY="\${DISPLAY:-:99}"
+    # 启动前清理可能残留的旧进程（避免 IPC 冲突导致世界加载卡死）
+    pkill -9 -f webots-bin 2>/dev/null || true
+    pkill -9 -f "ros2 launch eaios_webots" 2>/dev/null || true
+    pkill -9 -f "http.server 8080" 2>/dev/null || true
+    rm -rf /tmp/webots 2>/dev/null || true
+    sleep 1
     # 启动 Xvfb（如果没有真实 X server）
     if ! pgrep -x Xvfb >/dev/null 2>&1; then
         Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp &
         sleep 1
     fi
-    # 尝试用 AMD GPU 加速 Xorg（比 Xvfb 快很多）
-    if [[ -e /dev/dri/card0 ]] || [[ -e /dev/dri/card2 ]]; then
+    # 尝试用 AMD GPU 加速 Xorg（比 Xvfb 快很多，且 stream 模式需要 GPU GL 上下文）
+    # 注意：系统通常只装了 modesetting 驱动（xserver-xorg-core 自带），
+    #       没装 amdgpu Xorg 驱动，所以必须用 modesetting + kmsdev。
+    #       用 amdgpu 驱动会导致 "no screens found"，Xorg 启动失败，
+    #       回退到 Xvfb :99，而 Xvfb 不支持 Webots stream 模式的 GL 上下文需求，
+    #       导致世界永远加载不完（/tmp/webots/.../loading 文件不删除）。
+    if ls /dev/dri/card* >/dev/null 2>&1; then
         if ! pgrep -f "Xorg :48" >/dev/null 2>&1; then
             echo "[sim] 尝试启动 AMD GPU 加速 Xorg :48..."
-            cat > /tmp/xorg-amd.conf <<'XORG'
+            # 优先选 card1+（card0 有时是 VGArbiter 非显示设备）
+            AMD_DRI_CARD=\$(ls /dev/dri/card* 2>/dev/null | grep -v '/card0\$' | head -1)
+            [ -z "\$AMD_DRI_CARD" ] && AMD_DRI_CARD=\$(ls /dev/dri/card* 2>/dev/null | head -1)
+            echo "[sim]   DRI device: \$AMD_DRI_CARD"
+            cat > /tmp/xorg-amd.conf <<XORG
 Section "ServerLayout"
   Identifier "L0"
   Screen 0 "S0"
 EndSection
 Section "Device"
   Identifier "D0"
-  Driver "amdgpu"
+  Driver "modesetting"
+  Option "kmsdev" "\$AMD_DRI_CARD"
 EndSection
 Section "Screen"
   Identifier "S0"
@@ -986,9 +1002,10 @@ XORG
             sleep 2
             if [ -S /tmp/.X11-unix/X48 ]; then
                 export DISPLAY=:48
-                echo "[sim] AMD GPU Xorg :48 启动成功"
+                echo "[sim] AMD GPU Xorg :48 启动成功 (modesetting, \$AMD_DRI_CARD)"
             else
                 echo "[sim] AMD GPU Xorg 启动失败，回退到 Xvfb :99"
+                echo "[sim]   Xorg 日志: /tmp/Xorg.48.log"
                 export DISPLAY=:99
             fi
         fi

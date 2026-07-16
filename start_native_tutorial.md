@@ -53,7 +53,8 @@ python3 -c "import torch; print(torch.__version__, torch.cuda.is_available())"
 # 确认 /dev/kfd 和 /dev/dri
 ls -la /dev/kfd /dev/dri/
 # /dev/kfd ✅
-# /dev/dri/renderD129 ✅
+# /dev/dri/card1 ✅
+# /dev/dri/renderD128 ✅
 ```
 
 ---
@@ -377,7 +378,9 @@ http://<服务器IP>:8080/
 
 **AMD GPU 加速 Xorg（可选，比 Xvfb 快很多）**：
 
-`start_sim.sh` 会自动尝试用 AMD GPU 启动 Xorg :48（amdgpu 驱动）。如果成功，Webots 3D 渲染走 GPU 而非 CPU 软渲染，速度提升 10-100 倍。
+`start_sim.sh` 会自动尝试用 AMD GPU 启动 Xorg :48（`modesetting` 驱动 + `kmsdev`）。如果成功，Webots 3D 渲染走 GPU 而非 CPU 软渲染，速度提升 10-100 倍。
+
+> **重要**：`WEBOTS_STREAM=1` 流式模式下**必须**用 GPU Xorg，不能用 Xvfb。Xvfb 不支持 Webots stream 模式需要的 OpenGL 上下文，会导致世界永远加载不完（`/tmp/webots/.../loading` 文件不删除，controller 连接超时）。脚本会自动检测 `/dev/dri/card*` 并启动 Xorg :48。
 
 ### 7.2 终端 2（可选）：启动本地 VLM
 
@@ -526,9 +529,10 @@ DISPLAY=:48 glxinfo -B | grep "OpenGL renderer"
 ```
 
 如果 GPU 加速失败，确保：
-- `/dev/dri/card2` 和 `/dev/dri/renderD129` 存在
-- `amdgpu` 内核模块已加载
-- Xorg 配置文件正确（脚本自动生成）
+- `/dev/dri/card1` 和 `/dev/dri/renderD128` 存在
+- `amdgpu` 内核模块已加载（`lsmod | grep amdgpu`）
+- Xorg 用 `modesetting` 驱动（系统通常没装 `amdgpu` Xorg 驱动，`start_sim.sh` 已自动用 `modesetting` + `kmsdev`）
+- 检查 `/tmp/Xorg.48.log` 是否有 `no screens found` 错误
 
 ### Q4：`ros2 topic list` 为空
 

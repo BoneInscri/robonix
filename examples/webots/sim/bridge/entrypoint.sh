@@ -169,18 +169,20 @@ start_xvfb() {
 }
 
 start_amd_xorg() {
-  # AMD GPU: use the amdgpu driver with Mesa/Glamor. Unlike NVIDIA,
-  # AMD/Mesa doesn't need a BusID — the kernel driver binds automatically
-  # via /dev/dri/card*. We just need a minimal Xorg config that picks
-  # the amdgpu driver.
+  # AMD GPU: use the modesetting driver (ships with xserver-xorg-core;
+  # the proprietary "amdgpu" Xorg driver is often NOT installed on
+  # minimal/cloud images, causing "no screens found"). modesetting talks
+  # to the kernel amdgpu KMS driver directly via /dev/dri/card*.
   local dri_card
-  # Find the first render node (e.g. /dev/dri/renderD128)
-  dri_card=$(ls /dev/dri/card* 2>/dev/null | head -1)
+  # Find the first render node (e.g. /dev/dri/card1).
+  # Prefer card1+ because card0 is sometimes a non-display VGArbiter device.
+  dri_card=$(ls /dev/dri/card* 2>/dev/null | grep -v '/card0$' | head -1)
+  [ -z "$dri_card" ] && dri_card=$(ls /dev/dri/card* 2>/dev/null | head -1)
   if [ -z "$dri_card" ]; then
     echo "[entrypoint] no /dev/dri/card* found for AMD Xorg"
     return 1
   fi
-  echo "[entrypoint] AMD GPU: using $dri_card"
+  echo "[entrypoint] AMD GPU: using $dri_card (modesetting)"
 
   cat >/tmp/xorg-amd.conf <<XCONF
 Section "ServerLayout"
@@ -189,7 +191,8 @@ Section "ServerLayout"
 EndSection
 Section "Device"
   Identifier "D0"
-  Driver "amdgpu"
+  Driver "modesetting"
+  Option "kmsdev" "$dri_card"
 EndSection
 Section "Screen"
   Identifier "S0"
