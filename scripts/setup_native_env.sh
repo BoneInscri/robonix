@@ -372,10 +372,59 @@ ROCM_EOF
 }
 
 # ===========================================================================
-# 阶段 2：Rust + uv 工具链
+# 阶段 2：Git submodule + Rust + uv 工具链
 # ===========================================================================
+init_submodules() {
+    log "=== 阶段 2a: 初始化 Git submodule ==="
+
+    cd "$REPO_ROOT"
+
+    # 检查是否已有 .gitmodules
+    if [[ ! -f .gitmodules ]]; then
+        info "无 .gitmodules，跳过 submodule 初始化。"
+        return 0
+    fi
+
+    # 检查关键 submodule 目录是否为空
+    local need_init=0
+    for sub in capabilities/lib/common_interfaces capabilities/lib/rcl_interfaces; do
+        if [[ -d "$sub" ]] && [[ -z "$(ls -A "$sub" 2>/dev/null)" ]]; then
+            warn "submodule 目录为空: $sub"
+            need_init=1
+        fi
+    done
+
+    if [[ "$need_init" == "0" ]] && [[ -f capabilities/lib/common_interfaces/sensor_msgs/msg/Image.msg ]]; then
+        info "submodule 已就绪，跳过。"
+        return 0
+    fi
+
+    log "初始化并拉取 submodule（需要网络）..."
+    # 尝试一次性拉所有 submodule
+    if ! git submodule update --init --recursive 2>/dev/null; then
+        warn "一次性拉取失败，逐个拉取必需的 submodule..."
+        # 逐个拉取必需的 submodule
+        for sub in capabilities/lib/common_interfaces capabilities/lib/rcl_interfaces; do
+            log "拉取 submodule: $sub"
+            git submodule init "$sub" 2>/dev/null || true
+            git submodule update "$sub" 2>/dev/null || true
+        done
+    fi
+
+    # 验证关键文件存在
+    if [[ ! -f capabilities/lib/common_interfaces/sensor_msgs/msg/Image.msg ]]; then
+        err "submodule 拉取失败：common_interfaces/sensor_msgs/msg/Image.msg 不存在"
+        err "请手动执行：git submodule update --init --recursive"
+        return 1
+    fi
+
+    info "submodule 初始化完成。"
+    info "  common_interfaces: $(ls capabilities/lib/common_interfaces/ | wc -l) 个目录"
+    info "  rcl_interfaces: $(ls capabilities/lib/rcl_interfaces/ | wc -l) 个目录"
+}
+
 install_toolchain() {
-    log "=== 阶段 2: 安装 Rust + uv ==="
+    log "=== 阶段 2b: 安装 Rust + uv ==="
 
     # Rust
     if ! command -v cargo &>/dev/null; then
@@ -981,6 +1030,8 @@ main() {
     fi
 
     install_system_deps
+    echo ""
+    init_submodules
     echo ""
     install_toolchain
     echo ""
