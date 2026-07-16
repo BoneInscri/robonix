@@ -720,7 +720,7 @@ rbnx codegen -p "\$PKG" "\${FLAGS[@]}"
 IDL_DIR="\$PKG/rbnx-build/codegen/ros2_idl"
 if [ -d "\$IDL_DIR" ]; then
     echo "[tiago_chassis/build] colcon build ros2_idl (native)"
-    source /opt/ros/$ROS_DISTRO/setup.bash
+    set +u; source /opt/ros/$ROS_DISTRO/setup.bash; set -u
     (cd "\$IDL_DIR" && colcon build)
 else
     echo "[tiago_chassis/build] WARN: ros2_idl dir not found, skipping"
@@ -786,7 +786,7 @@ rbnx codegen -p "\$PKG" "\${FLAGS[@]}"
 IDL_DIR="\$PKG/rbnx-build/codegen/ros2_idl"
 if [ -d "\$IDL_DIR" ]; then
     echo "[tiago_camera/build] colcon build ros2_idl (native)"
-    source /opt/ros/$ROS_DISTRO/setup.bash
+    set +u; source /opt/ros/$ROS_DISTRO/setup.bash; set -u
     (cd "\$IDL_DIR" && colcon build)
 else
     echo "[tiago_camera/build] WARN: ros2_idl dir not found, skipping"
@@ -849,7 +849,7 @@ rbnx codegen -p "\$PKG" "\${FLAGS[@]}"
 IDL_DIR="\$PKG/rbnx-build/codegen/ros2_idl"
 if [ -d "\$IDL_DIR" ]; then
     echo "[tiago_lidar/build] colcon build ros2_idl (native)"
-    source /opt/ros/$ROS_DISTRO/setup.bash
+    set +u; source /opt/ros/$ROS_DISTRO/setup.bash; set -u
     (cd "\$IDL_DIR" && colcon build)
 else
     echo "[tiago_lidar/build] WARN: ros2_idl dir not found, skipping"
@@ -905,7 +905,7 @@ rbnx codegen -p "$PKG" "${FLAGS[@]}"
 IDL_DIR="$PKG/rbnx-build/codegen/ros2_idl"
 if [ -d "$IDL_DIR" ]; then
     echo "[simple_nav/build] colcon build ros2_idl (native)"
-    source /opt/ros/$ROS_DISTRO/setup.bash
+    set +u; source /opt/ros/$ROS_DISTRO/setup.bash; set -u
     (cd "$IDL_DIR" && colcon build)
 else
     echo "[simple_nav/build] WARN: ros2_idl dir not found, skipping"
