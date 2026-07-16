@@ -320,25 +320,52 @@ install_system_deps() {
         "grpcio>=1.78.0" "protobuf>=6.30,<7" mcp "fastmcp>=3" \
         numpy Pillow uvicorn httpx 2>/dev/null || warn "Python 依赖安装有警告，继续..."
 
-    # 1.6 ROCm 环境变量（确保 PyTorch 能找到 GPU）
-    # 机器上已有 ROCm 7.2.1 + PyTorch 2.9.1，只需要设置环境变量
+    # 1.6 ROCm 环境变量 + PyTorch 安装
     if [[ -d /opt/rocm ]]; then
-        info "检测到 ROCm $(cat /opt/rocm/.info/version 2>/dev/null || echo 'installed')"
+        local rocm_ver
+        rocm_ver=$(cat /opt/rocm/.info/version 2>/dev/null || echo "7.2")
+        info "检测到 ROCm $rocm_ver"
+
         # 写入 /etc/profile.d 以便所有 shell 都能使用
-        cat > /etc/profile.d/rocm-env.sh <<'ROCM_EOF'
+        cat > /etc/profile.d/rocm-env.sh <<ROCM_EOF
 # ROCm environment
 export ROCM_HOME=/opt/rocm
-export PATH=$ROCM_HOME/bin:$PATH
-export LD_LIBRARY_PATH=$ROCM_HOME/lib:${LD_LIBRARY_PATH:-}
-export HIP_VISIBLE_DEVICES=${HIP_VISIBLE_DEVICES:-0}
-export ROCR_VISIBLE_DEVICES=${ROCR_VISIBLE_DEVICES:-0}
-# PyTorch ROCm 需要 HSA_OVERRIDE_GFX_VERSION 来确保 gfx1100 兼容
-export HSA_OVERRIDE_GFX_VERSION=${HSA_OVERRIDE_GFX_VERSION:-11.0.0}
+export PATH=\$ROCM_HOME/bin:\$PATH
+export LD_LIBRARY_PATH=\$ROCM_HOME/lib:\${LD_LIBRARY_PATH:-}
+export HIP_VISIBLE_DEVICES=\${HIP_VISIBLE_DEVICES:-0}
+export ROCR_VISIBLE_DEVICES=\${ROCR_VISIBLE_DEVICES:-0}
+# gfx1100 需要此变量确保 PyTorch/vLLM 兼容
+export HSA_OVERRIDE_GFX_VERSION=\${HSA_OVERRIDE_GFX_VERSION:-11.0.0}
 ROCM_EOF
         chmod +x /etc/profile.d/rocm-env.sh
-        # 立即生效
         source /etc/profile.d/rocm-env.sh
         info "ROCm 环境变量已设置（/etc/profile.d/rocm-env.sh）"
+
+        # 检查 PyTorch 是否已安装，没装则安装 ROCm 版
+        if ! python3 -c "import torch" 2>/dev/null; then
+            log "PyTorch 未安装，安装 ROCm 版..."
+            # 从 ROCm 版本提取主次版本号，如 7.2.0 → 7.2
+            local rocm_short="${rocm_ver%.*}"  # "7.2"
+            pip3 install --no-cache-dir --break-system-packages --pre \
+                torch torchvision torchaudio \
+                --index-url "https://download.pytorch.org/whl/nightly/rocm${rocm_short}" \
+                --timeout 600 \
+                || {
+                    warn "PyTorch ROCm nightly (rocm${rocm_short}) 安装失败，尝试 rocm6.3..."
+                    pip3 install --no-cache-dir --break-system-packages \
+                        torch torchvision torchaudio \
+                        --index-url https://download.pytorch.org/whl/rocm6.3 \
+                        --timeout 600 \
+                        || warn "PyTorch 安装失败，VLM 功能需要远程 API"
+                }
+            # 验证
+            if python3 -c "import torch" 2>/dev/null; then
+                info "PyTorch 安装成功: $(python3 -c 'import torch; print(torch.__version__)')"
+                python3 -c "import torch; print('GPU available:', torch.cuda.is_available())"
+            fi
+        else
+            info "PyTorch 已安装: $(python3 -c 'import torch; print(torch.__version__)')"
+        fi
     fi
 
     log "系统依赖安装完成。"
@@ -357,6 +384,14 @@ install_toolchain() {
         source "$HOME/.cargo/env"
     else
         info "Rust 已安装 ($(rustc --version))"
+    fi
+
+    # 确保有默认工具链（rustup 装完有时没设 default）
+    if command -v rustup &>/dev/null; then
+        if ! rustup show active-toolchain &>/dev/null 2>&1; then
+            log "设置 Rust 默认工具链..."
+            rustup default stable
+        fi
     fi
 
     # uv（Python 包管理器）
