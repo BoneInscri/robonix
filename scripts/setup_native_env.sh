@@ -310,6 +310,47 @@ install_system_deps() {
         info "Webots 已安装 ($(webots --version 2>/dev/null || echo 'unknown'))，跳过。"
     fi
 
+    # 1.4b Webots 运行时依赖：Qt6 + OIS（Webots R2025a 基于 Qt6）
+    # 缺这些库时 webots-bin 能启动但无法加载世界文件、不创建 IPC 端点
+    if command -v webots &>/dev/null; then
+        local missing_libs
+        missing_libs=$(ldd /usr/local/webots/bin/webots-bin 2>/dev/null | grep "not found" || true)
+        if [[ -n "$missing_libs" ]]; then
+            log "检测到 Webots 缺少运行时库，安装 Qt6 + 依赖..."
+            info "缺失的库:"
+            echo "$missing_libs" | head -10
+
+            $SUDO apt-get install -y \
+                libqt6core6 libqt6network6 libqt6gui6 libqt6opengl6 \
+                libqt6openglwidgets6 libqt6websockets6 libqt6widgets6 \
+                libqt6printsupport6 libqt6qml6 libqt6xml6 \
+                libqt6core5compat6 \
+                libois-dev libois1.4 \
+                2>/dev/null || {
+                    warn "部分 Qt6 包名可能不同，尝试通配安装..."
+                    $SUDO apt-get install -y \
+                        qt6-base-dev qt6-websockets-dev \
+                        libqt6core6 libqt6gui6 libqt6widgets6 libqt6opengl6 \
+                        libqt6network6 libqt6xml6 libqt6qml6 \
+                        libqt6openglwidgets6 libqt6websockets6 libqt6printsupport6 \
+                        libois-dev \
+                        2>/dev/null || warn "Qt6 安装有警告，继续..."
+                }
+
+            # 验证
+            local still_missing
+            still_missing=$(ldd /usr/local/webots/bin/webots-bin 2>/dev/null | grep "not found" || true)
+            if [[ -n "$still_missing" ]]; then
+                warn "Webots 仍缺少库（可能需要手动安装）:"
+                echo "$still_missing"
+            else
+                info "Webots 运行时库已就绪。"
+            fi
+        else
+            info "Webots 运行时库完整，跳过。"
+        fi
+    fi
+
     # 1.5 Python 驱动依赖（driver 进程需要的库）
     # 注意：Ubuntu 24.04 的 Python 是 3.12，需要 --break-system-packages
     log "安装 Python 驱动依赖..."
