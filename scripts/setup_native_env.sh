@@ -399,6 +399,67 @@ install_system_deps() {
         fi
     fi
 
+    # 1.4c Webots 资源缓存预下载
+    # office.wbt 等世界文件引用大量 EXTERNPROTO（从 GitHub 下载的 .proto 文件），
+    # 首次启动时 Webots 会逐个下载，在容器/云服务器环境极慢或失败，
+    # 导致世界文件无法加载、IPC 端点不创建、extern controller 连接超时。
+    # 预下载资源到 ~/.cache/Cyberbotics/Webots/ 可避免此问题。
+    if command -v webots &>/dev/null; then
+        local webots_cache_dir="/root/.cache/Cyberbotics/Webots"
+        local proto_check="$webots_cache_dir/assets/projects/objects/backgrounds/protos/TexturedBackground.proto"
+
+        if [[ ! -f "$proto_check" ]]; then
+            log "预下载 Webots 资源缓存（EXTERNPROTO proto 文件）..."
+            mkdir -p "$webots_cache_dir/assets"
+
+            # 方案 A: 从 GitHub 下载 assets-R2025a.zip（官方资源包）
+            local assets_downloaded=0
+            for url in \
+                "https://github.com/cyberbotics/webots/releases/download/R2025a/assets-R2025a.zip" \
+                "https://ghfast.top/https://github.com/cyberbotics/webots/releases/download/R2025a/assets-R2025a.zip"; do
+                info "尝试下载: $url"
+                if wget --timeout=120 --tries=2 -q -O /tmp/webots-assets.zip "$url" && \
+                   [[ -s /tmp/webots-assets.zip ]]; then
+                    unzip -q -o /tmp/webots-assets.zip -d "$webots_cache_dir/assets/" 2>/dev/null
+                    assets_downloaded=1
+                    info "资源包下载并解压成功"
+                    break
+                fi
+                warn "该 URL 下载失败，尝试下一个..."
+                rm -f /tmp/webots-assets.zip
+            done
+
+            # 方案 B: 用 git clone 拉取 Webots 仓库的 projects + resources 目录
+            if [[ "$assets_downloaded" == "0" ]]; then
+                warn "资源包下载失败，尝试 git clone 方式..."
+                if GIT_SSL_NO_VERIFY=1 git clone --depth 1 --branch R2025a \
+                        https://github.com/cyberbotics/webots.git /tmp/webots-repo 2>/dev/null; then
+                    cp -r /tmp/webots-repo/projects "$webots_cache_dir/assets/projects" 2>/dev/null || true
+                    cp -r /tmp/webots-repo/resources "$webots_cache_dir/assets/resources" 2>/dev/null || true
+                    rm -rf /tmp/webots-repo
+                    assets_downloaded=1
+                    info "git clone 资源下载成功"
+                fi
+            fi
+
+            # 验证
+            if [[ -f "$proto_check" ]]; then
+                local cache_size
+                cache_size=$(du -sh "$webots_cache_dir" 2>/dev/null | awk '{print $1}')
+                info "✅ Webots 资源缓存就绪（$cache_size）"
+            else
+                warn "Webots 资源缓存预下载失败。首次启动 Webots 会很慢或失败。"
+                warn "手动下载：git clone --depth 1 --branch R2025a https://github.com/cyberbotics/webots.git"
+                warn "然后 cp -r /tmp/webots-repo/projects ~/.cache/Cyberbotics/Webots/assets/"
+            fi
+            rm -f /tmp/webots-assets.zip
+        else
+            local cache_size
+            cache_size=$(du -sh "$webots_cache_dir" 2>/dev/null | awk '{print $1}')
+            info "Webots 资源缓存已存在（$cache_size），跳过。"
+        fi
+    fi
+
     # 1.5 Python 驱动依赖（driver 进程需要的库）
     # 注意：Ubuntu 24.04 的 Python 是 3.12，需要 --break-system-packages
     log "安装 Python 驱动依赖..."
