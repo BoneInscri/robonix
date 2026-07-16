@@ -90,9 +90,10 @@ if [[ "$IS_JETSON" == "1" ]]; then
 fi
 VIRTUAL_ENV="$PKG/$VENV" uv sync "${SYNC_ARGS[@]}"
 
-# grpcio-tools>=1.78 generates protobuf gencode 7.x, but the workspace
-# uv.lock may pin protobuf <7. Force the runtime to match.
-uv pip install --python "$VENV/bin/python" "protobuf>=7.0"
+# grpcio-tools>=1.78 generates protobuf gencode 7.x and may require a
+# newer grpcio runtime than the workspace uv.lock pins.
+# Force-upgrade both to match the system-installed grpcio-tools.
+uv pip install --python "$VENV/bin/python" --upgrade grpcio protobuf
 
 # SpeechBrain declares torch/torchaudio as unconditional dependencies. On
 # Jetson those transitive requirements resolve to large, incompatible PyPI
