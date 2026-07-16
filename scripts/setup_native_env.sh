@@ -310,8 +310,10 @@ install_system_deps() {
         info "Webots 已安装 ($(webots --version 2>/dev/null || echo 'unknown'))，跳过。"
     fi
 
-    # 1.4b Webots 运行时依赖：Qt6 + OIS（Webots R2025a 基于 Qt6）
-    # 缺这些库时 webots-bin 能启动但无法加载世界文件、不创建 IPC 端点
+    # 1.4b Webots 运行时依赖：Qt6 6.5+ + OIS（Webots R2025a 基于 Qt6.5）
+    # 缺这些库时 webots-bin 能启动但无法加载世界文件、不创建 IPC 端点。
+    # Ubuntu 24.04 仓库里的 Qt6 是 6.4.x，但 Webots R2025a 需要 Qt 6.5+，
+    # 需要优先检查 Webots 自带的 Qt 库，其次尝试从 PPA 安装更高版本。
     if command -v webots &>/dev/null; then
         local missing_libs
         missing_libs=$(ldd /usr/local/webots/bin/webots-bin 2>/dev/null | grep "not found" || true)
@@ -320,10 +322,11 @@ install_system_deps() {
             info "缺失的库:"
             echo "$missing_libs" | head -10
 
+            # 步骤 1: 先从 apt 安装基础 Qt6 包（可能是 6.4，不满足但先装上其他依赖）
             $SUDO apt-get install -y \
-                libqt6core6 libqt6network6 libqt6gui6 libqt6opengl6 \
-                libqt6openglwidgets6 libqt6websockets6 libqt6widgets6 \
-                libqt6printsupport6 libqt6qml6 libqt6xml6 \
+                libqt6core6t64 libqt6network6t64 libqt6gui6t64 libqt6opengl6t64 \
+                libqt6openglwidgets6t64 libqt6websockets6t64 libqt6widgets6t64 \
+                libqt6printsupport6t64 libqt6qml6 libqt6xml6t64 \
                 libqt6core5compat6 \
                 libois-dev libois1.4 \
                 2>/dev/null || {
@@ -334,15 +337,51 @@ install_system_deps() {
                         libqt6network6 libqt6xml6 libqt6qml6 \
                         libqt6openglwidgets6 libqt6websockets6 libqt6printsupport6 \
                         libois-dev \
-                        2>/dev/null || warn "Qt6 安装有警告，继续..."
+                        2>/dev/null || warn "Qt6 apt 安装有警告，继续..."
                 }
 
-            # 验证
+            # 步骤 2: 检查是否仍有 Qt_6.5 版本不匹配问题
+            local qt_version_err
+            qt_version_err=$(ldd /usr/local/webots/bin/webots-bin 2>&1 | grep "Qt_6.5.*not found" || true)
+            if [[ -n "$qt_version_err" ]]; then
+                warn "系统 Qt6 版本 < 6.5，Webots R2025a 需要 Qt 6.5+"
+                info "尝试方案 A: 检查 Webots 是否自带 Qt 库..."
+                local webots_qt_dir=""
+                for d in /usr/local/webots/lib/qt6 /usr/local/webots/lib /usr/local/webots/bin; do
+                    if [[ -f "$d/libQt6Core.so.6" ]]; then
+                        webots_qt_dir="$d"
+                        break
+                    fi
+                done
+                if [[ -n "$webots_qt_dir" ]]; then
+                    info "发现 Webots 自带 Qt 库: $webots_qt_dir"
+                    # 写入 ld.so.conf 让系统优先加载 Webots 的 Qt
+                    echo "$webots_qt_dir" > /etc/ld.so.conf.d/webots-qt.conf
+                    ldconfig
+                    info "已将 Webots Qt 路径写入 /etc/ld.so.conf.d/webots-qt.conf"
+                else
+                    info "Webots 未自带 Qt6 库，尝试方案 B: 添加 PPA..."
+                    # 方案 B: 尝试添加 PPA 获取更高版本 Qt6
+                    $SUDO add-apt-repository ppa:ubuntu-toolchain-r/test -y 2>/dev/null || true
+                    $SUDO apt-get update -qq 2>/dev/null
+                    $SUDO apt-get install -y \
+                        libqt6core6 libqt6gui6 libqt6widgets6 libqt6opengl6 \
+                        libqt6network6 libqt6xml6 libqt6qml6 \
+                        libqt6openglwidgets6 libqt6websockets6 libqt6printsupport6 \
+                        2>/dev/null || warn "PPA Qt6 安装失败"
+                fi
+            fi
+
+            # 步骤 3: 最终验证
             local still_missing
             still_missing=$(ldd /usr/local/webots/bin/webots-bin 2>/dev/null | grep "not found" || true)
-            if [[ -n "$still_missing" ]]; then
-                warn "Webots 仍缺少库（可能需要手动安装）:"
-                echo "$still_missing"
+            local still_version_err
+            still_version_err=$(ldd /usr/local/webots/bin/webots-bin 2>&1 | grep "Qt_6.5.*not found" || true)
+            if [[ -n "$still_missing" ]] || [[ -n "$still_version_err" ]]; then
+                warn "Webots 仍有库问题:"
+                [[ -n "$still_missing" ]] && echo "$still_missing"
+                [[ -n "$still_version_err" ]] && echo "$still_version_err"
+                warn "请手动安装 Qt 6.5+ 或设置 LD_LIBRARY_PATH 指向 Webots 自带 Qt"
             else
                 info "Webots 运行时库已就绪。"
             fi
@@ -887,7 +926,8 @@ XORG
     echo "[sim] 浏览器流式模式已启用："
     echo "[sim]   Webots 3D 视图: http://\$(hostname -I 2>/dev/null | awk '{print \$1}' || echo localhost):8080/"
     echo "[sim]   WS 流地址:      ws://\$(hostname -I 2>/dev/null | awk '{print \$1}' || echo localhost):1234"
-    # 启动 viewer HTTP 服务
+    # 启动 viewer HTTP 服务（先清理可能占用 8080 的旧进程）
+    pkill -f "http.server 8080" 2>/dev/null || true
     WEBOTS_VIEWER_DIR="/usr/local/webots/resources/web/streaming_viewer"
     if [ -d "\$WEBOTS_VIEWER_DIR" ]; then
         (cd "\$WEBOTS_VIEWER_DIR" && python3 -m http.server 8080 --bind 0.0.0.0) &
