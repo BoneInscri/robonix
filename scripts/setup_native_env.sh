@@ -726,6 +726,7 @@ if [ -d "\$IDL_DIR" ]; then
     echo "[tiago_chassis/build] colcon build ros2_idl (native)"
     set +u; source /opt/ros/$ROS_DISTRO/setup.bash; set -u
     (cd "\$IDL_DIR" && colcon build)
+    rm -rf "\$IDL_DIR/install/rcl_interfaces"  # avoid shadowing system Jazzy version
 else
     echo "[tiago_chassis/build] WARN: ros2_idl dir not found, skipping"
 fi
@@ -796,6 +797,7 @@ if [ -d "\$IDL_DIR" ]; then
     echo "[tiago_camera/build] colcon build ros2_idl (native)"
     set +u; source /opt/ros/$ROS_DISTRO/setup.bash; set -u
     (cd "\$IDL_DIR" && colcon build)
+    rm -rf "\$IDL_DIR/install/rcl_interfaces"  # avoid shadowing system Jazzy version
 else
     echo "[tiago_camera/build] WARN: ros2_idl dir not found, skipping"
 fi
@@ -863,6 +865,7 @@ if [ -d "\$IDL_DIR" ]; then
     echo "[tiago_lidar/build] colcon build ros2_idl (native)"
     set +u; source /opt/ros/$ROS_DISTRO/setup.bash; set -u
     (cd "\$IDL_DIR" && colcon build)
+    rm -rf "\$IDL_DIR/install/rcl_interfaces"  # avoid shadowing system Jazzy version
 else
     echo "[tiago_lidar/build] WARN: ros2_idl dir not found, skipping"
 fi
@@ -923,6 +926,7 @@ if [ -d "$IDL_DIR" ]; then
     echo "[simple_nav/build] colcon build ros2_idl (native)"
     set +u; source /opt/ros/$ROS_DISTRO/setup.bash; set -u
     (cd "$IDL_DIR" && colcon build)
+    rm -rf "$IDL_DIR/install/rcl_interfaces"  # avoid shadowing system Jazzy version
 else
     echo "[simple_nav/build] WARN: ros2_idl dir not found, skipping"
 fi
