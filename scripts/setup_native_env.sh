@@ -787,11 +787,11 @@ REPO_ROOT="\$(cd "\$SCRIPT_DIR/../.." && pwd)"
 ROS_WS="\$REPO_ROOT/examples/webots/sim/ros_ws"
 
 set +u; source /opt/ros/$ROS_DISTRO/setup.bash; set -u
-source "\$ROS_WS/install/setup.bash" 2>/dev/null || {
+set +u; source "\$ROS_WS/install/setup.bash" 2>/dev/null || {
     echo "[sim] eaios_webots 未构建，正在构建..."
     cd "\$ROS_WS" && colcon build --symlink-install --packages-select eaios_webots
-    source "\$ROS_WS/install/setup.bash"
-}
+    set +u; source "\$ROS_WS/install/setup.bash"; set -u
+}; set -u
 
 export RMW_IMPLEMENTATION="\${RMW_IMPLEMENTATION:-rmw_zenoh_cpp}"
 export ROBONIX_WEBOTS_WORLD="\${ROBONIX_WEBOTS_WORLD:-office.wbt}"
