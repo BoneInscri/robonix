@@ -685,11 +685,15 @@ patch_driver_scripts() {
 # 直接在宿主机运行，与 Webots 共享同一个 DDS 域。
 set -euo pipefail
 
+set +u
 source /opt/ros/$ROS_DISTRO/setup.bash 2>/dev/null || true
+set -u
 
 PKG_DIR="\$(cd "\$(dirname "\$0")/.." && pwd)"
 OVL="\$PKG_DIR/rbnx-build/codegen/ros2_idl/install/setup.bash"
+set +u
 [ -f "\$OVL" ] && source "\$OVL" 2>/dev/null || true
+set -u
 
 export ROBONIX_ATLAS="\${ROBONIX_ATLAS:-127.0.0.1:50051}"
 export ROBONIX_ADVERTISE_HOST="\${ROBONIX_ADVERTISE_HOST:-127.0.0.1}"
@@ -743,11 +747,15 @@ BUILD_EOF
 # tiago_camera runtime — 原生模式（无 Docker）。
 set -euo pipefail
 
+set +u
 source /opt/ros/$ROS_DISTRO/setup.bash 2>/dev/null || true
+set -u
 
 PKG_DIR="\$(cd "\$(dirname "\$0")/.." && pwd)"
 OVL="\$PKG_DIR/rbnx-build/codegen/ros2_idl/install/setup.bash"
+set +u
 [ -f "\$OVL" ] && source "\$OVL" 2>/dev/null || true
+set -u
 
 export ROBONIX_ATLAS="\${ROBONIX_ATLAS:-127.0.0.1:50051}"
 export ROBONIX_ADVERTISE_HOST="\${ROBONIX_ADVERTISE_HOST:-127.0.0.1}"
@@ -808,11 +816,15 @@ BUILD_EOF
 # tiago_lidar runtime — 原生模式（无 Docker）。
 set -euo pipefail
 
+set +u
 source /opt/ros/$ROS_DISTRO/setup.bash 2>/dev/null || true
+set -u
 
 PKG_DIR="\$(cd "\$(dirname "\$0")/.." && pwd)"
 OVL="\$PKG_DIR/rbnx-build/codegen/ros2_idl/install/setup.bash"
+set +u
 [ -f "\$OVL" ] && source "\$OVL" 2>/dev/null || true
+set -u
 
 export ROBONIX_ATLAS="\${ROBONIX_ATLAS:-127.0.0.1:50051}"
 export ROBONIX_ADVERTISE_HOST="\${ROBONIX_ADVERTISE_HOST:-127.0.0.1}"
@@ -872,11 +884,15 @@ BUILD_EOF
 # simple_nav runtime — 原生模式（无 Docker）。
 set -euo pipefail
 
+set +u
 source /opt/ros/$ROS_DISTRO/setup.bash 2>/dev/null || true
+set -u
 
 PKG_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 OVL="$PKG_DIR/rbnx-build/codegen/ros2_idl/install/setup.bash"
+set +u
 [ -f "$OVL" ] && source "$OVL" 2>/dev/null || true
+set -u
 
 export ROBONIX_ATLAS="${ROBONIX_ATLAS:-127.0.0.1:50051}"
 export ROBONIX_PKG_HOST_DIR="$PKG_DIR"
@@ -1125,7 +1141,9 @@ set -euo pipefail
 SCRIPT_DIR="\$(cd "\$(dirname "\$0")" && pwd)"
 REPO_ROOT="\$(cd "\$SCRIPT_DIR/../.." && pwd)"
 
+set +u
 source /opt/ros/$ROS_DISTRO/setup.bash 2>/dev/null || true
+set -u
 source "\$HOME/.cargo/env" 2>/dev/null || true
 export PATH="\$HOME/.cargo/bin:\$HOME/.local/bin:\$PATH"
 
@@ -1199,7 +1217,9 @@ set -euo pipefail
 SCRIPT_DIR="\$(cd "\$(dirname "\$0")" && pwd)"
 REPO_ROOT="\$(cd "\$SCRIPT_DIR/../.." && pwd)"
 
+set +u
 source /opt/ros/$ROS_DISTRO/setup.bash 2>/dev/null || true
+set -u
 source "\$HOME/.cargo/env" 2>/dev/null || true
 export PATH="\$HOME/.cargo/bin:\$HOME/.local/bin:\$PATH"
 
