@@ -494,7 +494,10 @@ build_webots_pkg() {
 
     cd "$REPO_ROOT/examples/webots/sim/ros_ws"
 
+    # ROS2 setup.bash 在 set -u 下会报 unbound variable，临时关闭
+    set +u
     source /opt/ros/$ROS_DISTRO/setup.bash
+    set -u
     colcon build --symlink-install --packages-select eaios_webots
 
     log "eaios_webots 构建完成。"
