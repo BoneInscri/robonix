@@ -786,7 +786,7 @@ SCRIPT_DIR="\$(cd "\$(dirname "\$0")" && pwd)"
 REPO_ROOT="\$(cd "\$SCRIPT_DIR/../.." && pwd)"
 ROS_WS="\$REPO_ROOT/examples/webots/sim/ros_ws"
 
-source /opt/ros/$ROS_DISTRO/setup.bash
+set +u; source /opt/ros/$ROS_DISTRO/setup.bash; set -u
 source "\$ROS_WS/install/setup.bash" 2>/dev/null || {
     echo "[sim] eaios_webots 未构建，正在构建..."
     cd "\$ROS_WS" && colcon build --symlink-install --packages-select eaios_webots
