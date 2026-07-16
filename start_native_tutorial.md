@@ -8,20 +8,23 @@
 
 本教程基于以下实际云服务器环境编写：
 
-| 项目 | 实际值 |
-|------|--------|
-| 操作系统 | Ubuntu 24.04.4 LTS (Noble Numbat) |
-| 架构 | x86_64 |
-| CPU | AMD EPYC 9334 32-Core (64 CU) |
-| GPU | AMD Radeon Graphics (gfx1100, Device 744b) |
-| VRAM | ~48 GB (51,522,830,336 bytes) |
-| ROCm | 7.2.1 (`/opt/rocm` + `/opt/rocm-7.2.1`) |
-| PyTorch | 2.9.1+gitff65f5b (ROCm 版，GPU 可用) |
-| 用户 | root（容器内） |
-| Docker | 不可用（容器内环境） |
-| 内核 | 6.8.0-79-generic |
+
+| 项目      | 实际值                                        |
+| ------- | ------------------------------------------ |
+| 操作系统    | Ubuntu 24.04.4 LTS (Noble Numbat)          |
+| 架构      | x86_64                                     |
+| CPU     | AMD EPYC 9334 32-Core (64 CU)              |
+| GPU     | AMD Radeon Graphics (gfx1100, Device 744b) |
+| VRAM    | ~48 GB (51,522,830,336 bytes)              |
+| ROCm    | 7.2.1 (`/opt/rocm` + `/opt/rocm-7.2.1`)    |
+| PyTorch | 2.9.1+gitff65f5b (ROCm 版，GPU 可用)           |
+| 用户      | root（容器内）                                  |
+| Docker  | 不可用（容器内环境）                                 |
+| 内核      | 6.8.0-79-generic                           |
+
 
 **关键适配**：
+
 - Ubuntu 24.04 → ROS2 **Jazzy**（不是 Humble，Humble 仅支持 22.04）
 - 已有 ROCm + PyTorch → 跳过 PyTorch 安装，直接装 vLLM
 - root 用户 → 不使用 sudo
@@ -80,6 +83,7 @@ cd /path/to/robonix
 ```
 
 脚本会自动处理：
+
 - Ubuntu 24.04 → ROS2 Jazzy（不是 Humble）
 - root 用户 → 去掉 sudo
 - ROCm 环境变量 → 写入 `/etc/profile.d/rocm-env.sh`
@@ -236,6 +240,7 @@ make install
 ```
 
 安装到 `~/.cargo/bin` 的二进制：
+
 - `rbnx` — 命令行工具
 - `robonix-atlas` / `robonix-pilot` / `robonix-executor` / `robonix-liaison` / `robonix-soma` / `robonix-vitals`
 - `robonix-codegen`
@@ -294,13 +299,15 @@ Robonix 的 driver 包默认通过 `docker exec` 进入 Webots 容器运行。�
 
 ### 改造内容
 
-| 文件 | 改造 |
-|------|------|
-| `primitives/tiago_chassis/scripts/start.sh` | `docker exec` → 直接 `python3 -m chassis_driver.driver` |
-| `primitives/tiago_chassis/scripts/build.sh` | `docker exec ... colcon` → 直接 `colcon build` |
-| `primitives/tiago_chassis/package_manifest.yaml` | stop 段去掉 `docker exec "$SIM_CT"` |
-| `primitives/tiago_camera/scripts/*.sh` | 同上，加上静态 TF 发布器 |
-| `primitives/tiago_lidar/scripts/*.sh` | 同上，加上 `scan_normalize.py` |
+
+| 文件                                               | 改造                                                    |
+| ------------------------------------------------ | ----------------------------------------------------- |
+| `primitives/tiago_chassis/scripts/start.sh`      | `docker exec` → 直接 `python3 -m chassis_driver.driver` |
+| `primitives/tiago_chassis/scripts/build.sh`      | `docker exec ... colcon` → 直接 `colcon build`          |
+| `primitives/tiago_chassis/package_manifest.yaml` | stop 段去掉 `docker exec "$SIM_CT"`                      |
+| `primitives/tiago_camera/scripts/*.sh`           | 同上，加上静态 TF 发布器                                        |
+| `primitives/tiago_lidar/scripts/*.sh`            | 同上，加上 `scan_normalize.py`                             |
+
 
 改造后的 `start.sh` 模板（以 tiago_chassis 为例）：
 
@@ -339,24 +346,42 @@ cd /path/to/robonix
 WEBOTS_STREAM=1 bash scripts/native/start_sim.sh
 
 # 方式 B：手动启动
+#-------------------
 source /etc/profile.d/rocm-env.sh
 source /opt/ros/jazzy/setup.bash
 source examples/webots/sim/ros_ws/install/setup.bash
 
-# 启动 Xvfb 虚拟显示（或用 AMD GPU 加速的 Xorg :48）
-Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp &
+# 启动 Xvfb 虚拟显示（如果已有运行中的则复用）
+if pgrep -f "Xvfb :99" >/dev/null 2>&1; then
+    echo "Xvfb :99 已在运行，复用"
+else
+    Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp &
+    sleep 1
+fi
 export DISPLAY=:99
-sleep 1
 
-# 启动 Zenoh router
-/opt/ros/jazzy/lib/rmw_zenoh_cpp/rmw_zenohd &
-sleep 2
+# 启动 Zenoh router（如果已有运行中的则复用）
+if pgrep -f "rmw_zenohd" >/dev/null 2>&1; then
+    echo "rmw_zenohd 已在运行，复用"
+else
+    source /opt/ros/jazzy/setup.bash 2>/dev/null && /opt/ros/jazzy/lib/rmw_zenoh_cpp/rmw_zenohd &
+    sleep 2
+fi
 
-# 启动 Webots viewer HTTP 服务（端口 8080）
-WEBOTS_VIEWER_DIR="/usr/local/webots/resources/web/streaming_viewer"
-(cd "$WEBOTS_VIEWER_DIR" && python3 -m http.server 8080 --bind 0.0.0.0) &
+# 启动 Webots viewer HTTP 服务（端口 8080，如果已有运行中的则复用）
+if pgrep -f "http.server 8080" >/dev/null 2>&1; then
+    echo "viewer HTTP 服务已在运行，复用"
+else
+    WEBOTS_VIEWER_DIR="/usr/local/webots/resources/web/streaming_viewer"
+    (cd "$WEBOTS_VIEWER_DIR" && python3 -m http.server 8080 --bind 0.0.0.0) &
+fi
+
+#--------------
 
 # 启动仿真
+source /opt/ros/jazzy/setup.bash 2>/dev/null
+source examples/webots/sim/ros_ws/install/setup.bash 2>/dev/null
+export WEBOTS_HOME=/usr/local/webots
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 export ROBONIX_WEBOTS_WORLD=office.wbt
 export WEBOTS_STREAM=1
@@ -376,11 +401,19 @@ http://<服务器IP>:8080/
 
 > **端口放通**：确保服务器防火墙放通 `8080`（viewer 网页）和 `1234`（WS 流）。
 
+> **通过 SSH 连接时**：如果服务器 8080 端口未直接暴露到公网，用 SSH 端口转发。在本地电脑上执行：
+>
+> ```bash
+> ssh -L 8080:localhost:8080 -L 1234:localhost:1234 radeon
+> ```
+>
+> 然后浏览器打开 `http://localhost:8080/`。
+
 **AMD GPU 加速 Xorg（可选，比 Xvfb 快很多）**：
 
 `start_sim.sh` 会自动尝试用 AMD GPU 启动 Xorg :48（`modesetting` 驱动 + `kmsdev`）。如果成功，Webots 3D 渲染走 GPU 而非 CPU 软渲染，速度提升 10-100 倍。
 
-> **重要**：`WEBOTS_STREAM=1` 流式模式下**必须**用 GPU Xorg，不能用 Xvfb。Xvfb 不支持 Webots stream 模式需要的 OpenGL 上下文，会导致世界永远加载不完（`/tmp/webots/.../loading` 文件不删除，controller 连接超时）。脚本会自动检测 `/dev/dri/card*` 并启动 Xorg :48。
+> **重要**：`WEBOTS_STREAM=1` 流式模式下**必须**用 GPU Xorg，不能用 Xvfb。Xvfb 不支持 Webots stream 模式需要的 OpenGL 上下文，会导致世界永远加载不完（`/tmp/webots/.../loading` 文件不删除，controller 连接超时）。脚本会自动检测 `/dev/dri/card`* 并启动 Xorg :48。
 
 ### 7.2 终端 2（可选）：启动本地 VLM
 
@@ -529,6 +562,7 @@ DISPLAY=:48 glxinfo -B | grep "OpenGL renderer"
 ```
 
 如果 GPU 加速失败，确保：
+
 - `/dev/dri/card1` 和 `/dev/dri/renderD128` 存在
 - `amdgpu` 内核模块已加载（`lsmod | grep amdgpu`）
 - Xorg 用 `modesetting` 驱动（系统通常没装 `amdgpu` Xorg 驱动，`start_sim.sh` 已自动用 `modesetting` + `kmsdev`）
@@ -608,36 +642,40 @@ rbnx build -p system/scene
 
 ## 10. 文件速查
 
-| 文件 | 作用 |
-|------|------|
-| `scripts/setup_native_env.sh` | 一键安装脚本（已适配 Ubuntu 24.04 + ROCm） |
-| `scripts/native/start_sim.sh` | 启动 Webots 仿真（支持 AMD GPU Xorg 加速） |
-| `scripts/native/start_robonix.sh` | 启动 Robonix 栈 |
-| `scripts/native/build_drivers.sh` | 构建所有 driver 包 |
-| `scripts/native/start_vlm.sh` | 启动本地 vLLM VLM 服务 |
-| `scripts/native/stop_all.sh` | 停止所有进程 |
-| `/etc/profile.d/rocm-env.sh` | ROCm 环境变量（脚本自动创建） |
-| `examples/webots/robonix_manifest.yaml` | 部署清单 |
-| `examples/webots/sim/ros_ws/src/eaios_webots/` | Webots ROS2 包源码 |
+
+| 文件                                             | 作用                               |
+| ---------------------------------------------- | -------------------------------- |
+| `scripts/setup_native_env.sh`                  | 一键安装脚本（已适配 Ubuntu 24.04 + ROCm）  |
+| `scripts/native/start_sim.sh`                  | 启动 Webots 仿真（支持 AMD GPU Xorg 加速） |
+| `scripts/native/start_robonix.sh`              | 启动 Robonix 栈                     |
+| `scripts/native/build_drivers.sh`              | 构建所有 driver 包                    |
+| `scripts/native/start_vlm.sh`                  | 启动本地 vLLM VLM 服务                 |
+| `scripts/native/stop_all.sh`                   | 停止所有进程                           |
+| `/etc/profile.d/rocm-env.sh`                   | ROCm 环境变量（脚本自动创建）                |
+| `examples/webots/robonix_manifest.yaml`        | 部署清单                             |
+| `examples/webots/sim/ros_ws/src/eaios_webots/` | Webots ROS2 包源码                  |
+
 
 ---
 
 ## 11. 环境变量速查
 
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `ROS_DISTRO` | `jazzy` | ROS2 发行版（Ubuntu 24.04 用 Jazzy） |
-| `RMW_IMPLEMENTATION` | `rmw_zenoh_cpp` | ROS2 中间件 |
-| `ROCM_HOME` | `/opt/rocm` | ROCm 安装路径 |
-| `HSA_OVERRIDE_GFX_VERSION` | `11.0.0` | gfx1100 兼容版本 |
-| `HIP_VISIBLE_DEVICES` | `0` | 使用的 GPU 编号 |
-| `VLM_BASE_URL` | 远程 API | VLM 服务地址 |
-| `VLM_API_KEY` | - | VLM API 密钥 |
-| `VLM_MODEL` | `gpt-5.5` 或 `Qwen/Qwen2.5-VL-7B-Instruct` | VLM 模型名 |
-| `ROBONIX_SCENE_ROS_DISTRO` | `jazzy` | scene 包构建用的 ROS distro |
-| `ROBONIX_WEBOTS_WORLD` | `office.wbt` | Webots 仿真世界 |
-| `WEBOTS_STREAM` | `0` | 是否启用浏览器流式查看 |
-| `DISPLAY` | `:99` 或 `:48` | X11 显示器（Xvfb 或 AMD GPU Xorg） |
+
+| 变量                         | 默认值                                       | 说明                             |
+| -------------------------- | ----------------------------------------- | ------------------------------ |
+| `ROS_DISTRO`               | `jazzy`                                   | ROS2 发行版（Ubuntu 24.04 用 Jazzy） |
+| `RMW_IMPLEMENTATION`       | `rmw_zenoh_cpp`                           | ROS2 中间件                       |
+| `ROCM_HOME`                | `/opt/rocm`                               | ROCm 安装路径                      |
+| `HSA_OVERRIDE_GFX_VERSION` | `11.0.0`                                  | gfx1100 兼容版本                   |
+| `HIP_VISIBLE_DEVICES`      | `0`                                       | 使用的 GPU 编号                     |
+| `VLM_BASE_URL`             | 远程 API                                    | VLM 服务地址                       |
+| `VLM_API_KEY`              | -                                         | VLM API 密钥                     |
+| `VLM_MODEL`                | `gpt-5.5` 或 `Qwen/Qwen2.5-VL-7B-Instruct` | VLM 模型名                        |
+| `ROBONIX_SCENE_ROS_DISTRO` | `jazzy`                                   | scene 包构建用的 ROS distro         |
+| `ROBONIX_WEBOTS_WORLD`     | `office.wbt`                              | Webots 仿真世界                    |
+| `WEBOTS_STREAM`            | `0`                                       | 是否启用浏览器流式查看                    |
+| `DISPLAY`                  | `:99` 或 `:48`                             | X11 显示器（Xvfb 或 AMD GPU Xorg）   |
+
 
 ---
 
@@ -670,3 +708,4 @@ rbnx chat
 # 停止
 bash scripts/native/stop_all.sh
 ```
+

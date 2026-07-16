@@ -464,10 +464,10 @@ install_system_deps() {
     # 注意：Ubuntu 24.04 的 Python 是 3.12，需要 --break-system-packages
     log "安装 Python 驱动依赖..."
     python3 -m pip install --no-cache-dir --break-system-packages \
-        "grpcio>=1.78.0" "protobuf>=6.30,<7" mcp "fastmcp>=3" \
+        "grpcio>=1.78.0" "grpcio-tools>=1.78.0" "protobuf>=6.30,<7" mcp "fastmcp>=3" \
         numpy Pillow uvicorn httpx || \
     python3 -m pip install --no-cache-dir \
-        "grpcio>=1.78.0" "protobuf>=6.30,<7" mcp "fastmcp>=3" \
+        "grpcio>=1.78.0" "grpcio-tools>=1.78.0" "protobuf>=6.30,<7" mcp "fastmcp>=3" \
         numpy Pillow uvicorn httpx 2>/dev/null || warn "Python 依赖安装有警告，继续..."
 
     # 1.6 ROCm 环境变量 + PyTorch 安装
@@ -580,7 +580,12 @@ install_toolchain() {
     if ! command -v cargo &>/dev/null; then
         log "安装 Rust..."
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-        source "$HOME/.cargo/env"
+        # 某些环境下 rustup 不生成 ~/.cargo/env，回退到手动设 PATH
+        if [[ -f "$HOME/.cargo/env" ]]; then
+            source "$HOME/.cargo/env"
+        else
+            export PATH="$HOME/.cargo/bin:$PATH"
+        fi
     else
         info "Rust 已安装 ($(rustc --version))"
     fi
@@ -604,6 +609,14 @@ install_toolchain() {
 
     # 确认 PATH
     export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH"
+
+    # 写入 ~/.bashrc，确保新终端自动生效
+    for entry in 'export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH"'; do
+        if ! grep -qF "$entry" "$HOME/.bashrc" 2>/dev/null; then
+            echo "$entry" >> "$HOME/.bashrc"
+            info "已写入 ~/.bashrc：$entry"
+        fi
+    done
 }
 
 # ===========================================================================
@@ -620,7 +633,7 @@ build_robonix() {
 
     # 验证 rbnx 可用
     if ! command -v rbnx &>/dev/null; then
-        err "rbnx 未在 PATH 中。请手动 source ~/.cargo/env 后重试。"
+        err "rbnx 未在 PATH 中。请执行 source ~/.cargo/env 或 export PATH=\"\$HOME/.cargo/bin:\$PATH\" 后重试。"
         return 1
     fi
     info "rbnx 版本: $(rbnx --version 2>/dev/null || echo 'ok')"
@@ -848,15 +861,74 @@ BUILD_EOF
     sed -i 's|docker exec "$SIM_CT" pkill|pkill|g' "$lidar_dir/package_manifest.yaml"
     sed -i '/SIM_CT=/d' "$lidar_dir/package_manifest.yaml"
 
-    # --- 5.4 验证改造结果 ---
+    # --- 5.4 simple_nav 服务 ---
+    local nav_dir="$REPO_ROOT/examples/webots/services/simple_nav"
+    if [[ -d "$nav_dir/scripts" ]]; then
+        log "改造 simple_nav 服务..."
+
+        cat > "$nav_dir/scripts/start.sh" <<'START_EOF'
+#!/usr/bin/env bash
+# SPDX-License-Identifier: MulanPSL-2.0
+# simple_nav runtime — 原生模式（无 Docker）。
+set -euo pipefail
+
+source /opt/ros/$ROS_DISTRO/setup.bash 2>/dev/null || true
+
+PKG_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+OVL="$PKG_DIR/rbnx-build/codegen/ros2_idl/install/setup.bash"
+[ -f "$OVL" ] && source "$OVL" 2>/dev/null || true
+
+export ROBONIX_ATLAS="${ROBONIX_ATLAS:-127.0.0.1:50051}"
+export ROBONIX_PKG_HOST_DIR="$PKG_DIR"
+export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_zenoh_cpp}"
+export PYTHONPATH="$(rbnx path robonix-api 2>/dev/null || echo "$PKG_DIR/../../../pylib/robonix-api"):$PKG_DIR/rbnx-build/codegen/proto_gen:${PYTHONPATH:-}"
+
+cd "$PKG_DIR"
+exec python3 -m simple_nav.atlas_bridge
+START_EOF
+        chmod +x "$nav_dir/scripts/start.sh"
+
+        cat > "$nav_dir/scripts/build.sh" <<'BUILD_EOF'
+#!/usr/bin/env bash
+# SPDX-License-Identifier: MulanPSL-2.0
+# simple_nav build — 原生模式。codegen + colcon build 都在宿主机跑。
+set -euo pipefail
+PKG="${RBNX_PACKAGE_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+
+CLEAN="${RBNX_BUILD_CLEAN:-}"
+FLAGS=(--mcp --ros2)
+[[ "$CLEAN" == "1" ]] && FLAGS+=(--clean)
+
+echo "[simple_nav/build] rbnx codegen ${FLAGS[*]}"
+rbnx codegen -p "$PKG" "${FLAGS[@]}"
+
+IDL_DIR="$PKG/rbnx-build/codegen/ros2_idl"
+if [ -d "$IDL_DIR" ]; then
+    echo "[simple_nav/build] colcon build ros2_idl (native)"
+    source /opt/ros/$ROS_DISTRO/setup.bash
+    (cd "$IDL_DIR" && colcon build)
+else
+    echo "[simple_nav/build] WARN: ros2_idl dir not found, skipping"
+fi
+echo "[simple_nav/build] done."
+BUILD_EOF
+        chmod +x "$nav_dir/scripts/build.sh"
+
+        sed -i 's|docker exec "$SIM_CT" pkill|pkill|g' "$nav_dir/package_manifest.yaml"
+        sed -i '/SIM_CT=/d' "$nav_dir/package_manifest.yaml"
+
+        info "simple_nav 已改造为原生模式。"
+    fi
+
+    # --- 5.5 验证改造结果 ---
     log "验证改造结果..."
     local remaining
-    remaining=$(grep -rl "docker exec" "$primitives_dir"/*/scripts/ 2>/dev/null | wc -l)
+    remaining=$( (grep -rl "docker exec" "$primitives_dir"/*/scripts/ 2>/dev/null; grep -rl "docker exec" "$REPO_ROOT/examples/webots/services"/*/scripts/ 2>/dev/null) | wc -l)
     if (( remaining > 0 )); then
         warn "仍有 $remaining 个脚本包含 docker exec，请手动检查："
-        grep -rl "docker exec" "$primitives_dir"/*/scripts/ 2>/dev/null
+        grep -rl "docker exec" "$primitives_dir"/*/scripts/ "$REPO_ROOT/examples/webots/services"/*/scripts/ 2>/dev/null
     else
-        info "所有 driver 脚本已改造为原生模式。"
+        info "所有 driver + 服务脚本已改造为原生模式。"
     fi
 
     log "driver 脚本改造完成。"
