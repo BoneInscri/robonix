@@ -1033,11 +1033,14 @@ install_vlm() {
 
     # 安装: extra-index-url 指向 ROCm 仓库 (提供 vllm/torch/flash-attn 等二进制包),
     #        纯 Python 依赖从默认 PyPI 拉。指定确切版本号避免 pip 选 CUDA 版。
-    if ! pip3 install --no-cache-dir --break-system-packages \
+    # --ignore-installed: 跳过卸载已有的 apt 装的包 (如 pluggy/setuptools/protobuf),
+    #   这些包没有 RECORD 文件, pip 无法卸载会报 "Cannot uninstall ... RECORD file not found"。
+    #   用 --ignore-installed 让 pip 直接覆盖安装, 不尝试卸载。
+    if ! pip3 install --no-cache-dir --break-system-packages --ignore-installed \
             --extra-index-url "$wheel_base" \
             "vllm==${vllm_full_ver}" ; then
         err "vLLM ${vllm_full_ver} 安装失败。手动安装命令:"
-        err "  pip3 install --break-system-packages --extra-index-url ${wheel_base} 'vllm==${vllm_full_ver}'"
+        err "  pip3 install --break-system-packages --ignore-installed --extra-index-url ${wheel_base} 'vllm==${vllm_full_ver}'"
         err "或参考 https://docs.vllm.ai/en/latest/getting_started/installation/gpu/"
         err "临时方案：使用远程 VLM API（设置 VLM_BASE_URL/VLM_API_KEY/VLM_MODEL）"
         return 1
