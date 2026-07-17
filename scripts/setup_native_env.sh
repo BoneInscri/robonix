@@ -462,13 +462,14 @@ install_system_deps() {
 
     # 1.5 Python 驱动依赖（driver 进程需要的库）
     # 注意：Ubuntu 24.04 的 Python 是 3.12，需要 --break-system-packages
+    # --ignore-installed: 避免系统 apt 装的包（如 cryptography）无法卸载导致报错
     log "安装 Python 驱动依赖..."
-    python3 -m pip install --no-cache-dir --break-system-packages \
+    python3 -m pip install --no-cache-dir --break-system-packages --ignore-installed \
         "grpcio>=1.78.0" "grpcio-tools>=1.78.0" "protobuf>=7.0" mcp "fastmcp>=3" \
-        numpy Pillow uvicorn httpx || \
-    python3 -m pip install --no-cache-dir \
+        numpy Pillow uvicorn httpx cryptography || \
+    python3 -m pip install --no-cache-dir --ignore-installed \
         "grpcio>=1.78.0" "grpcio-tools>=1.78.0" "protobuf>=7.0" mcp "fastmcp>=3" \
-        numpy Pillow uvicorn httpx 2>/dev/null || warn "Python 依赖安装有警告，继续..."
+        numpy Pillow uvicorn httpx cryptography 2>/dev/null || warn "Python 依赖安装有警告，继续..."
 
     # 1.6 ROCm 环境变量 + PyTorch 安装
     if [[ -d /opt/rocm ]]; then
