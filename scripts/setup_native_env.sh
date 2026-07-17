@@ -1014,21 +1014,14 @@ install_vlm() {
     info "ROCm ${rocm_ver} → wheel 变体: ${rocm_variant} (${wheel_base})"
 
     # 动态查询仓库中最新的 vllm 版本号（避免写死过期）
-    local vllm_version
-    vllm_version=$(curl -s --max-time 20 "${wheel_base}/vllm/" 2>/dev/null \
-        | grep -oE "vllm-[0-9][^\"<>]*\.rocm${rocm_variant#rocm}[^\"<>]*" \
-        | sed -E 's/^vllm-//; s/-cp[0-9]+.*$//' \
-        | grep -oE '^[0-9][^/]*' \
-        | head -1)
-    # 上面 sed 后可能仍含 .whl 残留, 再清理
-    vllm_version="${vllm_version%.whl}"
-    vllm_version="${vllm_version%.rocm*}"
-    # 重新组装完整版本号 (含 +rocmXXX 后缀), 用于 pip 精确匹配
+    # 从 wheel 文件名提取版本号, 格式: vllm-<版本>.rocm<XXX>-cp312-cp312-...
+    # 注意: HTML 里的 + 可能被 URL 编码成 %2B, 必须解码, 否则 pip 不认。
     local vllm_full_ver
     vllm_full_ver=$(curl -s --max-time 20 "${wheel_base}/vllm/" 2>/dev/null \
         | grep -oE "vllm-[0-9][^\"<>]*rocm${rocm_variant#rocm}[^\"<>]*-cp312" \
         | head -1 \
-        | sed -E 's/^vllm-//; s/-cp312.*$//')
+        | sed -E 's/^vllm-//; s/-cp312.*$//' \
+        | sed 's/%2B/+/g')   # URL 解码: %2B → +
 
     if [[ -z "$vllm_full_ver" ]]; then
         err "无法从 ${wheel_base}/vllm/ 查询到 ROCm ${rocm_variant} 版 vllm wheel"
@@ -1044,7 +1037,7 @@ install_vlm() {
             --extra-index-url "$wheel_base" \
             "vllm==${vllm_full_ver}" ; then
         err "vLLM ${vllm_full_ver} 安装失败。手动安装命令:"
-        err "  pip3 install --extra-index-url ${wheel_base} 'vllm==${vllm_full_ver}'"
+        err "  pip3 install --break-system-packages --extra-index-url ${wheel_base} 'vllm==${vllm_full_ver}'"
         err "或参考 https://docs.vllm.ai/en/latest/getting_started/installation/gpu/"
         err "临时方案：使用远程 VLM API（设置 VLM_BASE_URL/VLM_API_KEY/VLM_MODEL）"
         return 1
