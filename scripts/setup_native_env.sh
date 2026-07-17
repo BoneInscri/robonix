@@ -943,11 +943,13 @@ BUILD_EOF
 
     # --- 5.5 验证改造结果 ---
     log "验证改造结果..."
+    # 注意: grep 无匹配时返回退出码 1, 在 set -e + pipefail 下会导致脚本退出。
+    # 用 || true 吞掉 grep 的非零退出码, 只用其 stdout。
     local remaining
-    remaining=$( (grep -rl "docker exec" "$primitives_dir"/*/scripts/ 2>/dev/null; grep -rl "docker exec" "$REPO_ROOT/examples/webots/services"/*/scripts/ 2>/dev/null) | wc -l)
+    remaining=$( (grep -rl "docker exec" "$primitives_dir"/*/scripts/ 2>/dev/null || true; grep -rl "docker exec" "$REPO_ROOT/examples/webots/services"/*/scripts/ 2>/dev/null || true) | wc -l)
     if (( remaining > 0 )); then
         warn "仍有 $remaining 个脚本包含 docker exec，请手动检查："
-        grep -rl "docker exec" "$primitives_dir"/*/scripts/ "$REPO_ROOT/examples/webots/services"/*/scripts/ 2>/dev/null
+        grep -rl "docker exec" "$primitives_dir"/*/scripts/ "$REPO_ROOT/examples/webots/services"/*/scripts/ 2>/dev/null || true
     else
         info "所有 driver + 服务脚本已改造为原生模式。"
     fi
