@@ -984,21 +984,70 @@ install_vlm() {
     fi
 
     # 安装 vLLM（ROCm 版）
-    # 注意: 不要用 2>/dev/null 吞掉 pip 错误, 否则失败时看不到原因。
-    # vLLM 官方 ROCm wheel 当前主要针对 ROCm 6.2 构建, 在 7.x 上向后兼容,
-    # 配合 HSA_OVERRIDE_GFX_VERSION 即可（gfx1100 → 11.0.0）。
+    # ── 关键经验（实测踩坑）──────────────────────────────────────────────
+    # 1. 不能用 --index-url 替换默认 PyPI: vLLM 依赖大量纯 Python 包
+    #    (aiohttp>=3.13.3 等) 只在 PyPI 上, 替换后会 "No matching distribution"。
+    # 2. 不能只用 --extra-index-url + 不限版本: pip 会选 PyPI 上版本号更高的
+    #    CUDA 版 vllm (如 0.25.1), 装到 AMD GPU 上无法运行。
+    # 3. 正确做法: --extra-index-url 指向 ROCm wheel 仓库 + 指定确切版本号
+    #    (带 rocmXXX 后缀, 如 0.20.2rc1.dev15+g321fa2d6d.rocm721),
+    #    这样 vllm 本体从 ROCm 仓库拉, 纯 Python 依赖从 PyPI 拉。
+    # 4. 版本号随 nightly 更新, 必须动态查询, 不能写死。
+    # 5. ROCm 版 vllm 会自带匹配版本的 torch (覆盖现有 torch), 这是正常的。
+    # ────────────────────────────────────────────────────────────────────
     info "安装 vLLM ROCm 版..."
+
+    # 根据 ROCm 版本选择 wheel 变体
+    #   ROCm 7.2.x → rocm721 (仅 nightly)
+    #   ROCm 7.0.x → rocm700 (稳定版 + nightly)
+    #   ROCm 6.x   → rocm62  (稳定版, 但路径是 /rocm/, 不是 /rocm/nightly/)
+    local rocm_major_minor rocm_variant wheel_base
+    rocm_major_minor="${rocm_ver%.*}"  # "7.2" / "7.0" / "6.2"
+    case "$rocm_major_minor" in
+        7.2) rocm_variant="rocm721"; wheel_base="https://wheels.vllm.ai/rocm/nightly/${rocm_variant}" ;;
+        7.0) rocm_variant="rocm700"; wheel_base="https://wheels.vllm.ai/rocm/nightly/${rocm_variant}" ;;
+        6.2) rocm_variant="rocm62";  wheel_base="https://wheels.vllm.ai/rocm" ;;
+        6.3) rocm_variant="rocm63";  wheel_base="https://wheels.vllm.ai/rocm" ;;
+        *)   rocm_variant="rocm721"; wheel_base="https://wheels.vllm.ai/rocm/nightly/${rocm_variant}"
+             warn "未知 ROCm ${rocm_ver}, 尝试 nightly rocm721 变体" ;;
+    esac
+    info "ROCm ${rocm_ver} → wheel 变体: ${rocm_variant} (${wheel_base})"
+
+    # 动态查询仓库中最新的 vllm 版本号（避免写死过期）
+    local vllm_version
+    vllm_version=$(curl -s --max-time 20 "${wheel_base}/vllm/" 2>/dev/null \
+        | grep -oE "vllm-[0-9][^\"<>]*\.rocm${rocm_variant#rocm}[^\"<>]*" \
+        | sed -E 's/^vllm-//; s/-cp[0-9]+.*$//' \
+        | grep -oE '^[0-9][^/]*' \
+        | head -1)
+    # 上面 sed 后可能仍含 .whl 残留, 再清理
+    vllm_version="${vllm_version%.whl}"
+    vllm_version="${vllm_version%.rocm*}"
+    # 重新组装完整版本号 (含 +rocmXXX 后缀), 用于 pip 精确匹配
+    local vllm_full_ver
+    vllm_full_ver=$(curl -s --max-time 20 "${wheel_base}/vllm/" 2>/dev/null \
+        | grep -oE "vllm-[0-9][^\"<>]*rocm${rocm_variant#rocm}[^\"<>]*-cp312" \
+        | head -1 \
+        | sed -E 's/^vllm-//; s/-cp312.*$//')
+
+    if [[ -z "$vllm_full_ver" ]]; then
+        err "无法从 ${wheel_base}/vllm/ 查询到 ROCm ${rocm_variant} 版 vllm wheel"
+        err "请手动访问该 URL 确认, 或参考 https://docs.vllm.ai ROCm 安装文档"
+        err "临时方案：使用远程 VLM API（设置 VLM_BASE_URL/VLM_API_KEY/VLM_MODEL）"
+        return 1
+    fi
+    info "最新 vllm 版本: ${vllm_full_ver}"
+
+    # 安装: extra-index-url 指向 ROCm 仓库 (提供 vllm/torch/flash-attn 等二进制包),
+    #        纯 Python 依赖从默认 PyPI 拉。指定确切版本号避免 pip 选 CUDA 版。
     if ! pip3 install --no-cache-dir --break-system-packages \
-            vllm \
-            --extra-index-url https://wheels.vllm.ai/rocm62/ ; then
-        warn "vLLM 从 wheel 仓库安装失败，尝试从 PyPI 安装（可能需要源码编译）..."
-        if ! pip3 install --no-cache-dir --break-system-packages vllm ; then
-            err "vLLM 安装失败。请手动安装："
-            err "  pip3 install vllm --extra-index-url https://wheels.vllm.ai/rocm62/"
-            err "或参考 https://docs.vllm.ai/en/latest/getting_started/amd.html"
-            err "临时方案：使用远程 VLM API（设置 VLM_BASE_URL/VLM_API_KEY/VLM_MODEL）"
-            return 1
-        fi
+            --extra-index-url "$wheel_base" \
+            "vllm==${vllm_full_ver}" ; then
+        err "vLLM ${vllm_full_ver} 安装失败。手动安装命令:"
+        err "  pip3 install --extra-index-url ${wheel_base} 'vllm==${vllm_full_ver}'"
+        err "或参考 https://docs.vllm.ai/en/latest/getting_started/installation/gpu/"
+        err "临时方案：使用远程 VLM API（设置 VLM_BASE_URL/VLM_API_KEY/VLM_MODEL）"
+        return 1
     fi
 
     # 验证安装
