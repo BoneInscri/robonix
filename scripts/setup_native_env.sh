@@ -395,17 +395,32 @@ install_system_deps() {
 # Webots Qt 插件路径（修复 libqxcb.so 找不到的问题）
 export QT_PLUGIN_PATH="$webots_qt_plugins:\${QT_PLUGIN_PATH:-}"
 
+# 系统的 Qt offscreen/minimal 平台插件路径（Webots 自带 Qt 只有 xcb + wayland，
+# 没有 offscreen/minimal 插件，无 DISPLAY 时无法启动 Qt 应用）。
+# 把系统 Qt 插件路径前置，让 webots-bin 能找到 libqminimal.so。
+for _p in /usr/lib/x86_64-linux-gnu/qt6/plugins /usr/lib/x86_64-linux-gnu/qt5/plugins; do
+    if [ -f "\$_p/platforms/libqminimal.so" ]; then
+        case ":\${QT_PLUGIN_PATH:-}:" in
+            *":\$_p:"*) ;;
+            *) export QT_PLUGIN_PATH="\$_p:\${QT_PLUGIN_PATH:-}" ;;
+        esac
+        break
+    fi
+done
+unset _p
+
 # QT_QPA_PLATFORM 动态选择：
 # - 有 DISPLAY（含真实 Xorg 或 Xvfb）时用 xcb，让 Webots 3D 视图能渲染
-# - 无 DISPLAY 时用 offscreen，让 webots --version / --help 这类
-#   纯命令在无头环境也能跑（不会被 Qt plugin 初始化卡住 abort）
+# - 无 DISPLAY 时用 minimal（不依赖 X server，让 webots --version / --help
+#   这类纯命令在无头环境也能跑）。注意：不能用 offscreen，因为 Webots 自带
+#   Qt 库没有 libqoffscreen.so（minimal 插件在系统 Qt 插件路径里找，见上）。
 # 注意：/usr/local/bin/webots 启动脚本原硬编码 export QT_QPA_PLATFORM="xcb"，
 #       会无视此处的设置 —— 见步骤 3b 的脚本修补。
 if [ -z "\${QT_QPA_PLATFORM:-}" ]; then
     if [ -n "\${DISPLAY:-}" ]; then
         export QT_QPA_PLATFORM="xcb"
     else
-        export QT_QPA_PLATFORM="offscreen"
+        export QT_QPA_PLATFORM="minimal"
     fi
 fi
 QT_ENV_EOF
@@ -443,12 +458,25 @@ new = (
     '# QT_QPA_PLATFORM: 由 setup_native_env.sh 改造，原硬编码 xcb 会无视 DISPLAY。\n'
     '# - 用户已显式设置 → 尊重用户\n'
     '# - 有 DISPLAY → 用 xcb（Webots 3D 视图需要真实 X server）\n'
-    '# - 无 DISPLAY → 用 offscreen（让 --version / --help 等命令能跑）\n'
+    '# - 无 DISPLAY → 用 minimal（不依赖 X server，让 --version / --help\n'
+    '#   等命令能跑；不能用 offscreen，因为 Webots 自带 Qt 没有\n'
+    '#   libqoffscreen.so，需要从系统 Qt 插件路径找 libqminimal.so）\n'
     'if [ -z "${QT_QPA_PLATFORM:-}" ]; then\n'
     '    if [ -n "${DISPLAY:-}" ]; then\n'
     '        export QT_QPA_PLATFORM="xcb"\n'
     '    else\n'
-    '        export QT_QPA_PLATFORM="offscreen"\n'
+    '        export QT_QPA_PLATFORM="minimal"\n'
+    '        # minimal 插件不在 Webots 自带 Qt 里，把系统 Qt 插件路径前置\n'
+    '        for _p in /usr/lib/x86_64-linux-gnu/qt6/plugins /usr/lib/x86_64-linux-gnu/qt5/plugins; do\n'
+    '            if [ -f "$_p/platforms/libqminimal.so" ]; then\n'
+    '                case ":${QT_PLUGIN_PATH:-}:" in\n'
+    '                    *":$_p:"*) ;;\n'
+    '                    *) export QT_PLUGIN_PATH="$_p:${QT_PLUGIN_PATH:-}" ;;\n'
+    '                esac\n'
+    '                break\n'
+    '            fi\n'
+    '        done\n'
+    '        unset _p\n'
     '    fi\n'
     'fi'
 )
