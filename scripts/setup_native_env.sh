@@ -984,17 +984,29 @@ install_vlm() {
     fi
 
     # 安装 vLLM（ROCm 版）
-    # ROCm 7.2 用 rocm721 tag（如果不可用回退到 rocm700）
+    # 注意: 不要用 2>/dev/null 吞掉 pip 错误, 否则失败时看不到原因。
+    # vLLM 官方 ROCm wheel 当前主要针对 ROCm 6.2 构建, 在 7.x 上向后兼容,
+    # 配合 HSA_OVERRIDE_GFX_VERSION 即可（gfx1100 → 11.0.0）。
     info "安装 vLLM ROCm 版..."
-    pip3 install --no-cache-dir --break-system-packages \
-        "vllm==0.18.0+rocm700" \
-        --extra-index-url "https://wheels.vllm.ai/rocm/0.18.0/rocm700" \
-        2>/dev/null || \
-    pip3 install --no-cache-dir --break-system-packages \
-        "vllm==0.18.0" \
-        --extra-index-url "https://wheels.vllm.ai/rocm/0.18.0/rocm700" \
-        2>/dev/null || \
-    warn "vLLM 安装失败，请手动安装或使用远程 API。"
+    if ! pip3 install --no-cache-dir --break-system-packages \
+            vllm \
+            --extra-index-url https://wheels.vllm.ai/rocm62/ ; then
+        warn "vLLM 从 wheel 仓库安装失败，尝试从 PyPI 安装（可能需要源码编译）..."
+        if ! pip3 install --no-cache-dir --break-system-packages vllm ; then
+            err "vLLM 安装失败。请手动安装："
+            err "  pip3 install vllm --extra-index-url https://wheels.vllm.ai/rocm62/"
+            err "或参考 https://docs.vllm.ai/en/latest/getting_started/amd.html"
+            err "临时方案：使用远程 VLM API（设置 VLM_BASE_URL/VLM_API_KEY/VLM_MODEL）"
+            return 1
+        fi
+    fi
+
+    # 验证安装
+    if ! python3 -c "import vllm" 2>/dev/null; then
+        err "vLLM 安装后仍无法 import，请检查依赖。"
+        return 1
+    fi
+    info "vLLM 安装成功: $(python3 -c 'import vllm; print(vllm.__version__)')"
 
     # 预下载模型权重（可选，首次启动会自动下载）
     info "VLM 安装完成。启动方式："
@@ -1251,6 +1263,21 @@ set -euo pipefail
 
 source /etc/profile.d/rocm-env.sh 2>/dev/null || true
 
+# 前置检查：vLLM 未装时给出明确提示，而不是让 python3 报晦涩的 ModuleNotFoundError
+if ! python3 -c "import vllm" 2>/dev/null; then
+    echo "[vlm] 错误: vLLM 未安装。" >&2
+    echo "[vlm] 请先安装（任选其一）:" >&2
+    echo "[vlm]   1) bash scripts/setup_native_env.sh --with-vlm   # 用本脚本安装" >&2
+    echo "[vlm]   2) pip3 install vllm --extra-index-url https://wheels.vllm.ai/rocm62/" >&2
+    echo "[vlm]   3) 改用远程 VLM API: 设置 VLM_BASE_URL/VLM_API_KEY/VLM_MODEL 后用 start_robonix.sh" >&2
+    exit 1
+fi
+if ! python3 -c "import torch" 2>/dev/null; then
+    echo "[vlm] 错误: PyTorch 未安装，vLLM 依赖它。" >&2
+    echo "[vlm] 安装: pip3 install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/rocm7.2" >&2
+    exit 1
+fi
+
 export HF_ENDPOINT="${HF_ENDPOINT:-https://hf-mirror.com}"
 export VLLM_MODEL="${VLM_MODEL:-Qwen/Qwen2.5-VL-7B-Instruct}"
 export VLLM_PORT="${VLM_PORT:-8000}"
@@ -1259,6 +1286,8 @@ echo "[vlm] 启动 vLLM..."
 echo "[vlm]   model: $VLLM_MODEL"
 echo "[vlm]   port:  $VLLM_PORT"
 echo "[vlm]   GPU:   $(rocm-smi --showproductname 2>/dev/null | grep -i 'Card series' | head -1 || echo 'AMD ROCm')"
+echo "[vlm]   vllm:  $(python3 -c 'import vllm; print(vllm.__version__)')"
+echo "[vlm]   torch: $(python3 -c 'import torch; print(torch.__version__)')"
 
 exec python3 -m vllm.entrypoints.openai.api_server \
     --host 0.0.0.0 \
