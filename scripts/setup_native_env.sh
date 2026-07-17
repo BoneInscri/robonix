@@ -384,8 +384,8 @@ install_system_deps() {
             # 步骤 3: 设置 QT_PLUGIN_PATH（关键修复）
             # 问题：Webots R2025a 自带 Qt 6.5 + libqxcb.so 在
             #   /usr/local/webots/lib/webots/qt/plugins/platforms/
-            # 但启动脚本 /usr/local/webots/webots 只 export QT_QPA_PLATFORM=xcb，
-            # 不设置 QT_PLUGIN_PATH，导致 Qt 找不到 libqxcb.so，报：
+            # 但启动脚本 /usr/local/webots/webots 不设置 QT_PLUGIN_PATH，
+            # 导致 Qt 找不到 libqxcb.so，报：
             #   "This application failed to start because no Qt platform plugin could be initialized."
             # 即使 libxcb-cursor0 已安装也无济于事。
             # 修复：把 Webots 自带 Qt 插件路径写入 /etc/profile.d，让所有 shell 生效。
@@ -394,13 +394,85 @@ install_system_deps() {
                 cat > /etc/profile.d/webots-qt.sh <<QT_ENV_EOF
 # Webots Qt 插件路径（修复 libqxcb.so 找不到的问题）
 export QT_PLUGIN_PATH="$webots_qt_plugins:\${QT_PLUGIN_PATH:-}"
+
+# QT_QPA_PLATFORM 动态选择：
+# - 有 DISPLAY（含真实 Xorg 或 Xvfb）时用 xcb，让 Webots 3D 视图能渲染
+# - 无 DISPLAY 时用 offscreen，让 webots --version / --help 这类
+#   纯命令在无头环境也能跑（不会被 Qt plugin 初始化卡住 abort）
+# 注意：/usr/local/bin/webots 启动脚本原硬编码 export QT_QPA_PLATFORM="xcb"，
+#       会无视此处的设置 —— 见步骤 3b 的脚本修补。
+if [ -z "\${QT_QPA_PLATFORM:-}" ]; then
+    if [ -n "\${DISPLAY:-}" ]; then
+        export QT_QPA_PLATFORM="xcb"
+    else
+        export QT_QPA_PLATFORM="offscreen"
+    fi
+fi
 QT_ENV_EOF
                 chmod +x /etc/profile.d/webots-qt.sh
                 export QT_PLUGIN_PATH="$webots_qt_plugins:${QT_PLUGIN_PATH:-}"
-                info "已写入 /etc/profile.d/webots-qt.sh (QT_PLUGIN_PATH=$webots_qt_plugins)"
+                info "已写入 /etc/profile.d/webots-qt.sh (QT_PLUGIN_PATH=$webots_qt_plugins, QT_QPA_PLATFORM 动态判断)"
             else
                 warn "Webots Qt 插件目录不存在: $webots_qt_plugins/platforms"
                 warn "Qt 插件加载可能失败，请检查 Webots 安装完整性"
+            fi
+
+            # 步骤 3b: 修补 /usr/local/bin/webots 启动脚本里硬编码的
+            # `export QT_QPA_PLATFORM="xcb"`。
+            # 问题：webots 启动脚本第 76 行硬编码 export QT_QPA_PLATFORM="xcb"，
+            #       会无视 profile.d 的动态设置，也无视用户从外部 export 的
+            #       QT_QPA_PLATFORM。后果：在无 DISPLAY 的 shell 里执行
+            #       `webots --version` 会被强制走 xcb，然后 Qt 报 "could not
+            #       connect to display" 直接 abort。ros2 launch 启动 webots 时
+            #       如果 DISPLAY 没在子进程里正确传递，也会同样 abort。
+            # 修复：把硬编码行改成"仅在用户没显式设置且 DISPLAY 存在时才用 xcb，
+            #       否则尊重外部设置（offscreen/minimal/wayland 等）"。
+            local webots_launcher="/usr/local/bin/webots"
+            local hardcoded_line='export QT_QPA_PLATFORM="xcb"'
+            if [[ -f "$webots_launcher" ]] && grep -qF "$hardcoded_line" "$webots_launcher"; then
+                # 备份一次（幂等：若 .robonix-patched 标记存在则不重复备份）
+                if [[ ! -f "$webots_launcher.robonix-orig" ]]; then
+                    cp -p "$webots_launcher" "$webots_launcher.robonix-orig"
+                fi
+                # 用 python 做多行替换，避免 sed 多行替换的转义坑。
+                python3 - "$webots_launcher" "$hardcoded_line" <<'PY' || warn "修补 webots 启动脚本失败"
+import sys, re
+p, old = sys.argv[1], sys.argv[2]
+s = open(p).read()
+new = (
+    '# QT_QPA_PLATFORM: 由 setup_native_env.sh 改造，原硬编码 xcb 会无视 DISPLAY。\n'
+    '# - 用户已显式设置 → 尊重用户\n'
+    '# - 有 DISPLAY → 用 xcb（Webots 3D 视图需要真实 X server）\n'
+    '# - 无 DISPLAY → 用 offscreen（让 --version / --help 等命令能跑）\n'
+    'if [ -z "${QT_QPA_PLATFORM:-}" ]; then\n'
+    '    if [ -n "${DISPLAY:-}" ]; then\n'
+    '        export QT_QPA_PLATFORM="xcb"\n'
+    '    else\n'
+    '        export QT_QPA_PLATFORM="offscreen"\n'
+    '    fi\n'
+    'fi'
+)
+# 只替换第一次出现（webots 脚本里这个 export 只有一处）
+new_s = s.replace(old, new, 1)
+if new_s == s:
+    print("no change", file=sys.stderr)
+    sys.exit(1)
+open(p, "w").write(new_s)
+print(f"patched: {p}")
+PY
+                if grep -qF '由 setup_native_env.sh 改造' "$webots_launcher"; then
+                    info "已修补 $webots_launcher 的 QT_QPA_PLATFORM 硬编码（备份: $webots_launcher.robonix-orig）"
+                    # 验证：无 DISPLAY 时 webots --version 应该能跑
+                    if env -u DISPLAY QT_QPA_PLATFORM=offscreen webots --version >/dev/null 2>&1; then
+                        info "✅ 验证: 无 DISPLAY 下 webots --version 可执行"
+                    else
+                        warn "验证失败: 无 DISPLAY 下 webots --version 仍报错（可能其他依赖缺失）"
+                    fi
+                fi
+            elif [[ -f "$webots_launcher" ]] && grep -qF '由 setup_native_env.sh 改造' "$webots_launcher"; then
+                info "webots 启动脚本已修补过，跳过"
+            else
+                warn "未在 $webots_launcher 找到 '$hardcoded_line'，可能 Webots 版本不同"
             fi
 
             # 步骤 4: 最终验证
