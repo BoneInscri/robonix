@@ -381,7 +381,29 @@ install_system_deps() {
                 fi
             fi
 
-            # 步骤 3: 最终验证
+            # 步骤 3: 设置 QT_PLUGIN_PATH（关键修复）
+            # 问题：Webots R2025a 自带 Qt 6.5 + libqxcb.so 在
+            #   /usr/local/webots/lib/webots/qt/plugins/platforms/
+            # 但启动脚本 /usr/local/webots/webots 只 export QT_QPA_PLATFORM=xcb，
+            # 不设置 QT_PLUGIN_PATH，导致 Qt 找不到 libqxcb.so，报：
+            #   "This application failed to start because no Qt platform plugin could be initialized."
+            # 即使 libxcb-cursor0 已安装也无济于事。
+            # 修复：把 Webots 自带 Qt 插件路径写入 /etc/profile.d，让所有 shell 生效。
+            local webots_qt_plugins="/usr/local/webots/lib/webots/qt/plugins"
+            if [[ -d "$webots_qt_plugins/platforms" ]]; then
+                cat > /etc/profile.d/webots-qt.sh <<QT_ENV_EOF
+# Webots Qt 插件路径（修复 libqxcb.so 找不到的问题）
+export QT_PLUGIN_PATH="$webots_qt_plugins:\${QT_PLUGIN_PATH:-}"
+QT_ENV_EOF
+                chmod +x /etc/profile.d/webots-qt.sh
+                export QT_PLUGIN_PATH="$webots_qt_plugins:${QT_PLUGIN_PATH:-}"
+                info "已写入 /etc/profile.d/webots-qt.sh (QT_PLUGIN_PATH=$webots_qt_plugins)"
+            else
+                warn "Webots Qt 插件目录不存在: $webots_qt_plugins/platforms"
+                warn "Qt 插件加载可能失败，请检查 Webots 安装完整性"
+            fi
+
+            # 步骤 4: 最终验证
             local still_missing
             still_missing=$(ldd /usr/local/webots/bin/webots-bin 2>/dev/null | grep "not found" || true)
             local still_version_err
@@ -1107,6 +1129,12 @@ ROS_WS="\$REPO_ROOT/examples/webots/sim/ros_ws"
 
 set +u; source /opt/ros/$ROS_DISTRO/setup.bash; set -u
 set +u; source "\$ROS_WS/install/setup.bash" 2>/dev/null; set -u
+
+# Qt 插件路径（修复 Webots libqxcb.so 找不到的问题）
+# /usr/local/webots/webots 启动脚本只设置 QT_QPA_PLATFORM=xcb，
+# 不设置 QT_PLUGIN_PATH，导致 Qt 无法加载 xcb 平台插件。
+source /etc/profile.d/webots-qt.sh 2>/dev/null || \\
+    export QT_PLUGIN_PATH="/usr/local/webots/lib/webots/qt/plugins:\${QT_PLUGIN_PATH:-}"
 
 if [ ! -f "\$ROS_WS/install/setup.bash" ]; then
     echo "[sim] eaios_webots 未构建，正在构建..."
